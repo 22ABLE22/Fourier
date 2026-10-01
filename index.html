@@ -95,8 +95,8 @@
                     <h2>🎛️ Controls</h2>
                     <div class="field-grid">
                         <div class="field-group"><label for="smoothInput">Smoothness (1-10)</label><input type="number" id="smoothInput" min="1" max="10" step="1" value="3"></div>
-                        <div class="field-group"><label for="harmonicInput">Harmonics (1-50)</label><input type="number" id="harmonicInput" min="1" max="50" step="1" value="5"></div>
-                        <div class="field-group"><label for="speedInput">Speed (x)</label><input type="number" id="speedInput" min="0.01" max="5" step="0.01" value="1.00"></div>
+                        <div class="field-group"><label for="harmonicInput">Harmonics (>=1)</label><input type="number" id="harmonicInput" min="1" step="1" value="5"></div>
+                        <div class="field-group"><label for="speedInput">Speed (x)</label><input type="number" id="speedInput" min="0.01" max="5" step="0.0001" value="1"></div>
                     </div>
                     <div class="controls">
                         <button id="pauseBtn">⏸️ Pause</button>
@@ -146,9 +146,9 @@
         const toast = document.getElementById('toast');
 
         const cw = c => c.width, ch = c => c.height;
-        const FIT_SAMPLES = 256;
+        const BASE_SAMPLES = 256, MAX_SAMPLES = 1024;
         let rawPoints = [], fourier = [], path = [], time = 0;
-        let smoothness = 3, harmonics = 5, speed = 1;
+        let smoothness = 3, harmonics = 5, speed = 1, fitSamples = BASE_SAMPLES;
         let animationId = null, paused = false;
         let viewX = 0, viewY = 0, viewScale = 1;
         let isDrawing = false, lastPt = null;
@@ -253,10 +253,13 @@
             path = []; time = 0; animate();
         }
 
+        function requiredSamples() { return Math.min(MAX_SAMPLES, Math.max(BASE_SAMPLES, 2 * harmonics)); }
+
         function computeFit() {
-            const resampled = smoothen(resample(rawPoints, FIT_SAMPLES), smoothness);
+            fitSamples = requiredSamples();
+            const resampled = smoothen(resample(rawPoints, fitSamples), smoothness);
             fourier = dft(resampled);
-            infoSamples.textContent = FIT_SAMPLES;
+            infoSamples.textContent = fitSamples;
             infoError.textContent = (computeError()*100).toFixed(1)+'%';
             autoFitView();
         }
@@ -269,7 +272,7 @@
 
         function animate() {
             if (paused) { animationId = requestAnimationFrame(animate); return; }
-            const dt = 0.02 * speed; time = (time + dt) % 1; path = [];
+            const dt = 0.002 * speed; time = (time + dt) % 1; path = [];
             const steps = 240, limit = Math.min(harmonics, fourier.length);
             for (let i = 0; i < steps; i++) {
                 const t = ((time - i/steps) % 1 + 1) % 1;
@@ -366,10 +369,14 @@
         harmonicInput.addEventListener('input', () => {
             const v = parseInt(harmonicInput.value, 10);
             if (!isFinite(v)) return;
-            harmonics = Math.min(50, Math.max(1, v));
-            infoError.textContent = fourier.length > 0 ? (computeError()*100).toFixed(1)+'%' : '-';
+            harmonics = Math.max(1, v);
+            if (rawPoints.length >= 10 && requiredSamples() > fitSamples) {
+                computeFit();
+            } else {
+                infoError.textContent = fourier.length > 0 ? (computeError()*100).toFixed(1)+'%' : '-';
+                autoFitView();
+            }
             if (animationId) { path = []; time = 0; }
-            autoFitView();
         });
         harmonicInput.addEventListener('change', () => { harmonicInput.value = harmonics; });
         speedInput.addEventListener('input', () => {
@@ -377,7 +384,7 @@
             if (!isFinite(v)) return;
             speed = Math.min(5, Math.max(0.01, v));
         });
-        speedInput.addEventListener('change', () => { speedInput.value = speed.toFixed(2); });
+        speedInput.addEventListener('change', () => { speedInput.value = String(Math.round(speed * 10000) / 10000); });
 
         pauseBtn.addEventListener('click', () => {
             if (!animationId) return;
