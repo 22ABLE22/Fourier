@@ -39,14 +39,12 @@
         button.preset { flex:1 1 auto; padding:7px 10px; font-size:0.76rem; color:#6d28d9; border-color:#ddd6fe; }
         button.preset:hover { background:#f5f3ff; border-color:#c4b5fd; }
         .preset-row { display:flex; flex-wrap:wrap; gap:6px; }
-        .slider-grid { display:grid; grid-template-columns:1fr; gap:9px; }
-        .slider-group { display:flex; flex-direction:column; gap:5px; }
-        .slider-group label { display:flex; align-items:center; justify-content:space-between; font-size:0.75rem; color:#4b5563; }
-        .slider-group label span.val { color:var(--brand); font-weight:600; font-variant-numeric:tabular-nums; }
-        input[type="range"] { width:100%; height:5px; border-radius:3px; background:#e6eaf1; outline:none; -webkit-appearance:none; appearance:none; cursor:pointer; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:var(--brand); border:2px solid #fff; box-shadow:0 1px 3px rgba(79,70,229,0.4); cursor:pointer; }
-        input[type="range"]::-moz-range-thumb { width:13px; height:13px; border:2px solid #fff; border-radius:50%; background:var(--brand); box-shadow:0 1px 3px rgba(79,70,229,0.4); cursor:pointer; }
-        .info-bar { flex:0 0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:auto; padding-top:9px; }
+        .field-grid { display:grid; grid-template-columns:1fr; gap:9px; }
+        .field-group { display:flex; flex-direction:column; gap:5px; }
+        .field-group label { font-size:0.75rem; color:#4b5563; }
+        input[type="number"] { width:100%; padding:6px 9px; font-size:0.8rem; color:var(--text); background:#fff; border:1px solid #d5dbe4; border-radius:8px; font-variant-numeric:tabular-nums; }
+        input[type="number"]:focus { outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(79,70,229,0.14); }
+        .info-bar { flex:0 0 auto; display:grid; grid-template-columns:repeat(2,1fr); gap:7px; margin-top:auto; padding-top:9px; }
         .info-cell { padding:6px 2px; text-align:center; background:#f8fafc; border:1px solid var(--line-soft); border-radius:9px; }
         .info-cell .label { font-size:0.6rem; letter-spacing:0.06em; text-transform:uppercase; color:#8b97a8; }
         .info-cell .value { margin-top:2px; font-size:0.98rem; font-weight:600; color:var(--blue); font-variant-numeric:tabular-nums; }
@@ -95,20 +93,18 @@
                 </div>
                 <div class="side-block">
                     <h2>🎛️ Controls</h2>
-                    <div class="slider-grid">
-                        <div class="slider-group"><label>Smoothness <span id="smoothVal" class="val">3</span></label><input type="range" id="smoothSlider" min="1" max="10" value="3"></div>
-                        <div class="slider-group"><label>Harmonics <span id="harmonicVal" class="val">5</span></label><input type="range" id="harmonicSlider" min="1" max="50" value="5"></div>
-                        <div class="slider-group"><label>Speed <span id="speedVal" class="val">1.0x</span></label><input type="range" id="speedSlider" min="1" max="20" value="10"></div>
+                    <div class="field-grid">
+                        <div class="field-group"><label for="smoothInput">Smoothness (1-10)</label><input type="number" id="smoothInput" min="1" max="10" step="1" value="3"></div>
+                        <div class="field-group"><label for="harmonicInput">Harmonics (1-50)</label><input type="number" id="harmonicInput" min="1" max="50" step="1" value="5"></div>
+                        <div class="field-group"><label for="speedInput">Speed (x)</label><input type="number" id="speedInput" min="0.01" max="5" step="0.01" value="1.00"></div>
                     </div>
                     <div class="controls">
                         <button id="pauseBtn">⏸️ Pause</button>
                         <button id="resetViewBtn">🔄 Reset View</button>
-                        <button id="trailBtn">✨ Trail Fade</button>
                     </div>
                 </div>
                 <div class="info-bar">
-                    <div class="info-cell"><div class="label">Points</div><div id="infoSamples" class="value">0</div></div>
-                    <div class="info-cell"><div class="label">Harmonics</div><div id="infoHarmonics" class="value">0</div></div>
+                    <div class="info-cell"><div class="label" title="Number of curve samples fed into the Fourier transform">Samples</div><div id="infoSamples" class="value">0</div></div>
                     <div class="info-cell"><div class="label">Error</div><div id="infoError" class="value">-</div></div>
                 </div>
             </aside>
@@ -127,7 +123,7 @@
                 </div>
             </section>
         </div>
-        <footer>Fourier Series Visualization · HTML5 Canvas</footer>
+        <footer>Fourier Series Visualization</footer>
     </div>
     <div id="toast" class="toast"></div>
     <script>
@@ -140,24 +136,20 @@
         const clearBtn = document.getElementById('clearBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const resetViewBtn = document.getElementById('resetViewBtn');
-        const trailBtn = document.getElementById('trailBtn');
-        const smoothSlider = document.getElementById('smoothSlider');
-        const harmonicSlider = document.getElementById('harmonicSlider');
-        const speedSlider = document.getElementById('speedSlider');
-        const smoothVal = document.getElementById('smoothVal');
-        const harmonicVal = document.getElementById('harmonicVal');
-        const speedVal = document.getElementById('speedVal');
+        const smoothInput = document.getElementById('smoothInput');
+        const harmonicInput = document.getElementById('harmonicInput');
+        const speedInput = document.getElementById('speedInput');
         const infoSamples = document.getElementById('infoSamples');
-        const infoHarmonics = document.getElementById('infoHarmonics');
         const infoError = document.getElementById('infoError');
         const drawHint = document.getElementById('drawHint');
         const stageHint = document.getElementById('stageHint');
         const toast = document.getElementById('toast');
 
         const cw = c => c.width, ch = c => c.height;
+        const FIT_SAMPLES = 256;
         let rawPoints = [], fourier = [], path = [], time = 0;
         let smoothness = 3, harmonics = 5, speed = 1;
-        let animationId = null, paused = false, trailFade = false;
+        let animationId = null, paused = false;
         let viewX = 0, viewY = 0, viewScale = 1;
         let isDrawing = false, lastPt = null;
 
@@ -255,13 +247,24 @@
         function startFit() {
             if (rawPoints.length < 10) { showToast('Draw more points first!', true); return; }
             sizeFourierCanvas();
-            const resampled = smoothen(resample(rawPoints, 256), smoothness);
-            fourier = dft(resampled); infoSamples.textContent = rawPoints.length; infoHarmonics.textContent = harmonics;
-            infoError.textContent = (computeError()*100).toFixed(1)+'%';
-            autoFitView();
+            computeFit();
             stageHint.style.display = 'none';
             if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
             path = []; time = 0; animate();
+        }
+
+        function computeFit() {
+            const resampled = smoothen(resample(rawPoints, FIT_SAMPLES), smoothness);
+            fourier = dft(resampled);
+            infoSamples.textContent = FIT_SAMPLES;
+            infoError.textContent = (computeError()*100).toFixed(1)+'%';
+            autoFitView();
+        }
+
+        function refitLive() {
+            if (fourier.length === 0 || rawPoints.length < 10) return;
+            computeFit();
+            if (!animationId) { path = []; time = 0; animate(); }
         }
 
         function animate() {
@@ -279,8 +282,7 @@
 
         function draw() {
             const fw = cw(fourierCanvas), fh = ch(fourierCanvas), cx = fw/2+viewX, cy = fh/2+viewY;
-            if (trailFade) { fourierCtx.fillStyle = 'rgba(255,255,255,0.16)'; fourierCtx.fillRect(0, 0, fw, fh); }
-            else fourierCtx.clearRect(0, 0, fw, fh);
+            fourierCtx.clearRect(0, 0, fw, fh);
             fourierCtx.lineJoin = 'round'; fourierCtx.lineCap = 'round';
             fourierCtx.strokeStyle = '#ef4444'; fourierCtx.lineWidth = 2.2/viewScale;
             if (path.length > 1) { fourierCtx.beginPath(); fourierCtx.moveTo(cx+path[0].x*viewScale, cy+path[0].y*viewScale); for (let i = 1; i < path.length; i++) fourierCtx.lineTo(cx+path[i].x*viewScale, cy+path[i].y*viewScale); fourierCtx.stroke(); }
@@ -348,28 +350,40 @@
             drawCtx.clearRect(0, 0, cw(drawCanvas), ch(drawCanvas));
             fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
             drawHint.style.display = ''; stageHint.style.display = '';
-            infoSamples.textContent = '0'; infoHarmonics.textContent = '0'; infoError.textContent = '-';
+            infoSamples.textContent = '0'; infoError.textContent = '-';
             showToast('Cleared');
         });
 
         fitBtn.addEventListener('click', startFit);
 
-        smoothSlider.addEventListener('input', () => { smoothness = parseInt(smoothSlider.value); smoothVal.textContent = smoothness; });
-        harmonicSlider.addEventListener('input', () => {
-            harmonics = parseInt(harmonicSlider.value); harmonicVal.textContent = harmonics; infoHarmonics.textContent = harmonics;
+        smoothInput.addEventListener('input', () => {
+            const v = parseInt(smoothInput.value, 10);
+            if (!isFinite(v)) return;
+            smoothness = Math.min(10, Math.max(1, v));
+            refitLive();
+        });
+        smoothInput.addEventListener('change', () => { smoothInput.value = smoothness; });
+        harmonicInput.addEventListener('input', () => {
+            const v = parseInt(harmonicInput.value, 10);
+            if (!isFinite(v)) return;
+            harmonics = Math.min(50, Math.max(1, v));
+            infoError.textContent = fourier.length > 0 ? (computeError()*100).toFixed(1)+'%' : '-';
             if (animationId) { path = []; time = 0; }
             autoFitView();
         });
-        speedSlider.addEventListener('input', () => { speed = parseInt(speedSlider.value)/10; speedVal.textContent = speed.toFixed(1)+'x'; });
+        harmonicInput.addEventListener('change', () => { harmonicInput.value = harmonics; });
+        speedInput.addEventListener('input', () => {
+            const v = parseFloat(speedInput.value);
+            if (!isFinite(v)) return;
+            speed = Math.min(5, Math.max(0.01, v));
+        });
+        speedInput.addEventListener('change', () => { speedInput.value = speed.toFixed(2); });
 
         pauseBtn.addEventListener('click', () => {
             if (!animationId) return;
             paused = !paused; pauseBtn.textContent = paused ? '▶️ Resume' : '⏸️ Pause';
         });
         resetViewBtn.addEventListener('click', () => { autoFitView(); });
-        trailBtn.addEventListener('click', () => {
-            trailFade = !trailFade; trailBtn.textContent = trailFade ? '✨ Trail Fade (On)' : '✨ Trail Fade';
-       });
 
         const presets = {
             heart: t => ({ x: 16*Math.sin(t)**3, y: -(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t)) }),
