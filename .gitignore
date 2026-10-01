@@ -1,0 +1,19 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor files
+*.bak
+*.tmp
+*.swp
+*~
+
+# Node (future expansion)
+node_modules/
+
+# Conversation logs (contain secrets)
+对话*.md
+
+# Legacy Chinese-named file
+Fourier级数自由绘图工具.html
