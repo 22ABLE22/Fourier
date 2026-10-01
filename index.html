@@ -135,6 +135,7 @@
         const cw = c => c.width, ch = c => c.height;
         const BASE_SAMPLES = 256, MAX_SAMPLES = 1024;
         let rawPoints = [], fourier = [], path = [], time = 0;
+        let fitCenter = { x: 0, y: 0 };
         let smoothness = 3, harmonics = 5, speed = 1, fitSamples = BASE_SAMPLES;
         let animationId = null, paused = false;
         let viewX = 0, viewY = 0, viewScale = 1;
@@ -245,6 +246,9 @@
         function computeFit() {
             fitSamples = requiredSamples();
             const resampled = smoothen(resample(rawPoints, fitSamples), smoothness);
+            let centerX = 0, centerY = 0;
+            for (const p of resampled) { centerX += p.x; centerY += p.y; }
+            fitCenter = { x: centerX / resampled.length, y: centerY / resampled.length };
             fourier = dft(resampled);
             infoSamples.textContent = fitSamples;
             infoError.textContent = (computeError()*100).toFixed(1)+'%';
@@ -276,8 +280,8 @@
             fourierCtx.lineJoin = 'round'; fourierCtx.lineCap = 'round';
             if (rawPoints.length > 1) {
                 fourierCtx.strokeStyle = 'rgba(37,99,235,0.35)'; fourierCtx.lineWidth = 1.6/viewScale;
-                fourierCtx.beginPath(); fourierCtx.moveTo(cx + rawPoints[0].x*viewScale, cy + rawPoints[0].y*viewScale);
-                for (let i = 1; i < rawPoints.length; i++) fourierCtx.lineTo(cx + rawPoints[i].x*viewScale, cy + rawPoints[i].y*viewScale);
+                fourierCtx.beginPath(); fourierCtx.moveTo(cx + (rawPoints[0].x - fitCenter.x)*viewScale, cy + (rawPoints[0].y - fitCenter.y)*viewScale);
+                for (let i = 1; i < rawPoints.length; i++) fourierCtx.lineTo(cx + (rawPoints[i].x - fitCenter.x)*viewScale, cy + (rawPoints[i].y - fitCenter.y)*viewScale);
                 fourierCtx.stroke();
             }
             fourierCtx.strokeStyle = '#ef4444'; fourierCtx.lineWidth = 2.2/viewScale;
@@ -389,7 +393,7 @@
         resetViewBtn.addEventListener('click', () => { autoFitView(); });
 
         const presets = {
-            heart: t => ({ x: 16*Math.sin(t)**3, y: -(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t)) }),
+            heart: t => ({ x: 80*Math.sin(t)**3, y: -(65*Math.cos(t)-25*Math.cos(2*t)-10*Math.cos(3*t)-5*Math.cos(4*t)) }),
             star: t => { const r = 80+60*Math.cos(5*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; },
             butterfly: t => { const e = Math.exp(Math.cos(t))-2*Math.cos(4*t)-Math.sin(t/12)**5; return { x: 60*Math.sin(t)*e, y: -50*Math.cos(t)*e }; },
             treble: t => { const r = 60+30*Math.sin(3*t)+20*Math.cos(2*t); return { x: r*Math.sin(t), y: -r*Math.cos(t)+20*Math.sin(2*t) }; },
