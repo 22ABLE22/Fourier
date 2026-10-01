@@ -24,8 +24,6 @@
         .stage-head h2 { margin-bottom:0; }
         .canvas-wrap { position:relative; flex:1 1 auto; min-height:0; }
         .canvas-wrap canvas { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:block; max-width:100%; max-height:100%; background:#fff; border-radius:10px; box-shadow:inset 0 0 0 1px var(--line-soft); cursor:crosshair; }
-        .draw-wrap { flex:0 0 auto; height:280px; }
-        #fourierCanvas { cursor:default; }
         .drawing-hint { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100%; padding:0 14px; text-align:center; font-size:0.82rem; line-height:1.55; color:#b3bdcc; pointer-events:none; }
         .stage-hint { font-size:0.92rem; }
         .controls { flex:0 0 auto; display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
@@ -55,31 +53,20 @@
         .toast { position:fixed; top:16px; left:50%; z-index:999; padding:9px 20px; font-size:0.82rem; color:#fff; background:#111827; border-radius:9px; box-shadow:0 8px 24px rgba(16,24,40,0.18); transform:translateX(-50%) translateY(-160%); transition:transform .35s cubic-bezier(.34,1.4,.64,1); pointer-events:none; }
         .toast.show { transform:translateX(-50%) translateY(0); }
         .toast.error { background:#dc2626; }
-        @media (max-height:860px) { .app { padding:10px 14px; gap:8px; } .draw-wrap { height:224px; } .panel { padding:10px; } .panel h2 { margin-bottom:7px; } }
-        @media (max-height:740px) { .draw-wrap { height:178px; } .sidebar { gap:7px; } .info-cell .value { font-size:0.9rem; } }
+        @media (max-height:860px) { .app { padding:10px 14px; gap:8px; } .panel { padding:10px; } .panel h2 { margin-bottom:7px; } }
+        @media (max-height:740px) { .sidebar { gap:7px; } .info-cell .value { font-size:0.9rem; } }
         @media (max-width:1240px) { .sidebar { flex:0 0 302px; } }
-        @media (max-width:960px) { body { overflow:auto; } .app { height:auto; padding:12px; } header { flex-direction:column; align-items:flex-start; gap:3px; } .main-layout { flex-direction:column; } .sidebar { flex:0 0 auto; overflow:visible; } .draw-wrap { height:min(76vw,300px); } .stage { height:min(88vw,520px); } .legend { justify-content:flex-start; } }
+        @media (max-width:960px) { body { overflow:auto; } .app { height:auto; padding:12px; } header { flex-direction:column; align-items:flex-start; gap:3px; } .main-layout { flex-direction:column; } .sidebar { flex:0 0 auto; overflow:visible; } .stage { height:min(88vw,520px); } .legend { justify-content:flex-start; } }
     </style>
 </head>
 <body>
     <div class="app">
         <header>
             <h1><span class="logo">📈</span>Fourier Series Closed Curve Fitting</h1>
-            <p class="subtitle">Draw a closed curve on the left, then watch rotating circles trace it back on the right</p>
+            <p class="subtitle">Draw a closed curve directly on the canvas, then watch rotating circles trace it back</p>
         </header>
         <div class="main-layout">
             <aside class="panel sidebar">
-                <div class="side-block">
-                    <h2>✏️ Drawing Canvas</h2>
-                    <div class="canvas-wrap draw-wrap">
-                        <canvas id="drawCanvas" width="320" height="320"></canvas>
-                        <div id="drawHint" class="drawing-hint">Draw a closed curve here</div>
-                    </div>
-                    <div class="controls">
-                        <button id="fitBtn" class="success">🎨 Fit</button>
-                        <button id="clearBtn" class="danger">🗑️ Clear</button>
-                    </div>
-                </div>
                 <div class="side-block">
                     <h2>⚡ Presets</h2>
                     <div class="preset-row">
@@ -99,6 +86,8 @@
                         <div class="field-group"><label for="speedInput">Speed (x)</label><input type="number" id="speedInput" min="0.01" max="5" step="0.0001" value="1"></div>
                     </div>
                     <div class="controls">
+                        <button id="fitBtn" class="success">🎨 Fit</button>
+                        <button id="clearBtn" class="danger">🗑️ Clear</button>
                         <button id="pauseBtn">⏸️ Pause</button>
                         <button id="resetViewBtn">🔄 Reset View</button>
                     </div>
@@ -112,6 +101,7 @@
                 <div class="stage-head">
                     <h2>🌀 Fourier Epicycles</h2>
                     <div class="legend">
+                        <div class="legend-item"><div class="legend-dot" style="background:#93c5fd"></div><span>Input</span></div>
                         <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div><span>Trace</span></div>
                         <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div><span>Epicycles</span></div>
                         <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div><span>Pen</span></div>
@@ -119,7 +109,7 @@
                 </div>
                 <div class="canvas-wrap">
                     <canvas id="fourierCanvas" width="600" height="600"></canvas>
-                    <div id="stageHint" class="drawing-hint stage-hint">Pick a preset on the left or draw a curve, then press Fit</div>
+                    <div id="stageHint" class="drawing-hint stage-hint">Draw a closed curve here or pick a preset, then press Fit</div>
                 </div>
             </section>
         </div>
@@ -128,9 +118,7 @@
     <div id="toast" class="toast"></div>
     <script>
     (function() {
-        const drawCanvas = document.getElementById('drawCanvas');
         const fourierCanvas = document.getElementById('fourierCanvas');
-        const drawCtx = drawCanvas.getContext('2d');
         const fourierCtx = fourierCanvas.getContext('2d');
         const fitBtn = document.getElementById('fitBtn');
         const clearBtn = document.getElementById('clearBtn');
@@ -141,7 +129,6 @@
         const speedInput = document.getElementById('speedInput');
         const infoSamples = document.getElementById('infoSamples');
         const infoError = document.getElementById('infoError');
-        const drawHint = document.getElementById('drawHint');
         const stageHint = document.getElementById('stageHint');
         const toast = document.getElementById('toast');
 
@@ -159,29 +146,29 @@
         }
 
         function redrawDrawing() {
-            drawCtx.clearRect(0, 0, cw(drawCanvas), ch(drawCanvas));
+            fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
             if (rawPoints.length < 2) return;
-            drawCtx.strokeStyle = '#2563eb'; drawCtx.lineWidth = 2; drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
-            drawCtx.beginPath(); drawCtx.moveTo(rawPoints[0].x, rawPoints[0].y);
-            for (let i = 1; i < rawPoints.length; i++) drawCtx.lineTo(rawPoints[i].x, rawPoints[i].y);
-            drawCtx.stroke();
+            fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.lineCap = 'round'; fourierCtx.lineJoin = 'round';
+            fourierCtx.beginPath(); fourierCtx.moveTo(rawPoints[0].x, rawPoints[0].y);
+            for (let i = 1; i < rawPoints.length; i++) fourierCtx.lineTo(rawPoints[i].x, rawPoints[i].y);
+            fourierCtx.stroke();
         }
 
         function getEventPos(e) {
-            const rect = drawCanvas.getBoundingClientRect();
+            const rect = fourierCanvas.getBoundingClientRect();
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            const sx = cw(drawCanvas) / rect.width, sy = ch(drawCanvas) / rect.height;
+            const sx = cw(fourierCanvas) / rect.width, sy = ch(fourierCanvas) / rect.height;
             return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sy };
         }
 
-        drawCanvas.addEventListener('mousedown', e => { isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); drawHint.style.display = 'none'; });
-        drawCanvas.addEventListener('mousemove', e => { if (!isDrawing || !lastPt) return; const pt = getEventPos(e); drawCtx.strokeStyle = '#2563eb'; drawCtx.lineWidth = 2; drawCtx.beginPath(); drawCtx.moveTo(lastPt.x, lastPt.y); drawCtx.lineTo(pt.x, pt.y); drawCtx.stroke(); rawPoints.push(pt); lastPt = pt; });
-        drawCanvas.addEventListener('mouseup', () => { isDrawing = false; lastPt = null; rawPoints.push(rawPoints[0]); redrawDrawing(); });
-        drawCanvas.addEventListener('mouseleave', () => { if (isDrawing) { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } } });
-        drawCanvas.addEventListener('touchstart', e => { e.preventDefault(); isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); drawHint.style.display = 'none'; }, { passive: false });
-        drawCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!isDrawing || !lastPt) return; const pt = getEventPos(e); drawCtx.strokeStyle = '#2563eb'; drawCtx.lineWidth = 2; drawCtx.beginPath(); drawCtx.moveTo(lastPt.x, lastPt.y); drawCtx.lineTo(pt.x, pt.y); drawCtx.stroke(); rawPoints.push(pt); lastPt = pt; }, { passive: false });
-        drawCanvas.addEventListener('touchend', () => { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } });
+        fourierCanvas.addEventListener('mousedown', e => { stopAnimation(); rawPoints = []; isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); stageHint.style.display = 'none'; });
+        fourierCanvas.addEventListener('mousemove', e => { if (!isDrawing || !lastPt) return; const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt; });
+        fourierCanvas.addEventListener('mouseup', () => { isDrawing = false; lastPt = null; rawPoints.push(rawPoints[0]); redrawDrawing(); });
+        fourierCanvas.addEventListener('mouseleave', () => { if (isDrawing) { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } } });
+        fourierCanvas.addEventListener('touchstart', e => { e.preventDefault(); stopAnimation(); rawPoints = []; isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); stageHint.style.display = 'none'; }, { passive: false });
+        fourierCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!isDrawing || !lastPt) return; const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt; }, { passive: false });
+        fourierCanvas.addEventListener('touchend', () => { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } });
 
         function dft(pts) {
             const N = pts.length;
@@ -287,6 +274,12 @@
             const fw = cw(fourierCanvas), fh = ch(fourierCanvas), cx = fw/2+viewX, cy = fh/2+viewY;
             fourierCtx.clearRect(0, 0, fw, fh);
             fourierCtx.lineJoin = 'round'; fourierCtx.lineCap = 'round';
+            if (rawPoints.length > 1) {
+                fourierCtx.strokeStyle = 'rgba(37,99,235,0.35)'; fourierCtx.lineWidth = 1.6/viewScale;
+                fourierCtx.beginPath(); fourierCtx.moveTo(cx + rawPoints[0].x*viewScale, cy + rawPoints[0].y*viewScale);
+                for (let i = 1; i < rawPoints.length; i++) fourierCtx.lineTo(cx + rawPoints[i].x*viewScale, cy + rawPoints[i].y*viewScale);
+                fourierCtx.stroke();
+            }
             fourierCtx.strokeStyle = '#ef4444'; fourierCtx.lineWidth = 2.2/viewScale;
             if (path.length > 1) { fourierCtx.beginPath(); fourierCtx.moveTo(cx+path[0].x*viewScale, cy+path[0].y*viewScale); for (let i = 1; i < path.length; i++) fourierCtx.lineTo(cx+path[i].x*viewScale, cy+path[i].y*viewScale); fourierCtx.stroke(); }
             if (fourier.length > 0 && path.length > 0) {
@@ -340,7 +333,11 @@
         }
 
         function refitOnResize() {
-            if (sizeFourierCanvas()) { autoFitView(); draw(); }
+            if (sizeFourierCanvas()) {
+                if (fourier.length === 0) { redrawDrawing(); return; }
+                autoFitView();
+                draw();
+            }
         }
 
         let resizeTimer = null;
@@ -350,9 +347,8 @@
 
         clearBtn.addEventListener('click', () => {
             stopAnimation(); rawPoints = []; fourier = []; path = []; time = 0;
-            drawCtx.clearRect(0, 0, cw(drawCanvas), ch(drawCanvas));
             fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
-            drawHint.style.display = ''; stageHint.style.display = '';
+            stageHint.style.display = '';
             infoSamples.textContent = '0'; infoError.textContent = '-';
             showToast('Cleared');
         });
@@ -404,8 +400,8 @@
         document.querySelectorAll('[data-preset]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const fn = presets[btn.dataset.preset]; if (!fn) return;
-                stopAnimation(); rawPoints = []; drawHint.style.display = 'none';
-                const dw = cw(drawCanvas), dh = ch(drawCanvas);
+                stopAnimation(); rawPoints = []; stageHint.style.display = 'none';
+                const dw = cw(fourierCanvas), dh = ch(fourierCanvas);
                 const ccx = dw/2, ccy = dh/2, scale = Math.min(dw,dh)/350;
                 for (let i = 0; i < 360; i++) {
                     const t = 2*Math.PI*i/360, p = fn(t);
