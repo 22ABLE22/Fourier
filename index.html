@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>傅里叶级数闭合曲线拟合</title>
+    <title>Fourier Series Closed Curve Fitting</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; }
         body { background:linear-gradient(135deg,#0f0c29,#302b63,#24243e); color:#e0e0e0; min-height:100vh; overflow-x:hidden; }
@@ -48,328 +48,172 @@
 <body>
     <div class="container">
         <header>
-            <h1>傅里叶级数闭合曲线拟合</h1>
-            <p class="subtitle">绘制任意闭合曲线，观察傅里叶级数如何通过旋转圆的叠加精确逼近它</p>
+            <h1>Fourier Series Closed Curve Fitting</h1>
+            <p class="subtitle">Draw any closed curve and observe how Fourier series approximates it through rotating circles</p>
         </header>
         <div class="main-layout">
             <div class="panel">
-                <h2>✏️ 绘制区域</h2>
+                <h2>Drawing Canvas</h2>
                 <div class="canvas-wrap">
-                    <canvas id="drawCanvas" width="500" height="500"></canvas>
-                    <div class="drawing-hint" id="drawHint">在此处绘制闭合曲线<br>松开鼠标自动闭合并拟合</div>
-                </div>
-                <div class="slider-group">
-                    <label>平滑度 <span class="val" id="smoothVal">3</span></label>
-                    <input type="range" id="smoothSlider" min="1" max="15" value="3">
+                    <canvas id="drawCanvas" width="320" height="320"></canvas>
+                    <div id="drawHint" class="drawing-hint">Draw a closed curve below</div>
                 </div>
                 <div class="controls">
-                    <button class="danger" id="clearBtn">🗑️ 清除</button>
-                    <button class="success" id="fitBtn">🔄 拟合曲线</button>
+                    <button id="fitBtn" class="success">🎨 Fit</button>
+                    <button id="clearBtn" class="danger">🗑️ Clear</button>
                 </div>
-                <div style="margin-top:12px;">
-                    <h2 style="font-size:1rem;">🎯 预设图形</h2>
-                    <div class="preset-row">
-                        <button class="preset" data-preset="heart">❤️ 心形</button>
-                        <button class="preset" data-preset="star">⭐ 星形</button>
-                        <button class="preset" data-preset="butterfly">🦋 蝴蝶</button>
-                        <button class="preset" data-preset="treble">🎵 音符</button>
-                        <button class="preset" data-preset="arrow">➡️ 箭头</button>
-                        <button class="preset" data-preset="infinity">♾️ 无穷</button>
-                    </div>
+                <div class="info-bar">
+                    <div class="info-cell"><div class="label">Points</div><div id="infoSamples" class="value">0</div></div>
+                    <div class="info-cell"><div class="label">Harmonics</div><div id="infoHarmonics" class="value">0</div></div>
+                    <div class="info-cell"><div class="label">Fit Error</div><div id="infoError" class="value">-</div></div>
                 </div>
             </div>
             <div class="panel">
-                <h2>🌀 傅里叶圆叠加可视化</h2>
-                <canvas id="fourierCanvas" width="700" height="700"></canvas>
-                <div class="slider-group">
-                    <label>谐波数量 <span class="val" id="harmonicVal">20</span></label>
-                    <input type="range" id="harmonicSlider" min="1" max="200" value="20">
-                </div>
-                <div class="slider-group">
-                    <label>动画速度 <span class="val" id="speedVal">1.0x</span></label>
-                    <input type="range" id="speedSlider" min="1" max="50" value="10">
-                </div>
+                <h2>Fourier Epicycles</h2>
+                <canvas id="fourierCanvas" width="600" height="600"></canvas>
                 <div class="controls">
-                    <button id="pauseBtn" class="warning">⏸️ 暂停</button>
-                    <button id="resetViewBtn">🔍 重置视图</button>
-                    <button id="trailBtn">✨ 轨迹渐隐</button>
+                    <button id="pauseBtn">⏸️ Pause</button>
+                    <button id="resetViewBtn">🔄 Reset View</button>
+                    <button id="trailBtn">✨ Trail Fade</button>
                 </div>
                 <div class="legend">
-                    <div class="legend-item"><div class="legend-dot" style="background:#ff6b6b"></div>原始曲线</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#00d2ff"></div>傅里叶近似</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#f39c12"></div>旋转圆</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#9b59b6"></div>画笔端点</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#3498db"></div><span>Drawing</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#e74c3c"></div><span>Fit</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#f39c12"></div><span>Circles</span></div>
                 </div>
             </div>
         </div>
-        <div class="info-bar">
-            <div class="info-cell"><div class="label">采样点数</div><div class="value" id="infoSamples">0</div></div>
-            <div class="info-cell"><div class="label">当前谐波</div><div class="value" id="infoHarmonics">0</div></div>
-            <div class="info-cell"><div class="label">拟合误差</div><div class="value" id="infoError">-</div></div>
-            <div class="info-cell"><div class="label">帧率</div><div class="value" id="infoFPS">0</div></div>
+        <div class="panel">
+            <h2>Presets</h2>
+            <div class="preset-row">
+                <button class="preset" data-preset="heart">❤️ Heart</button>
+                <button class="preset" data-preset="star">⭐ Star</button>
+                <button class="preset" data-preset="butterfly">🦋 Butterfly</button>
+                <button class="preset" data-preset="treble">🎵 Treble Clef</button>
+                <button class="preset" data-preset="arrow">➡️ Arrow</button>
+                <button class="preset" data-preset="infinity">♾️ Infinity</button>
+            </div>
         </div>
-        <footer><p>傅里叶级数闭合曲线拟合工具 | HTML5 Canvas + JavaScript</p></footer>
+        <div class="panel">
+            <div class="slider-group"><label>Smoothness <span id="smoothVal" class="val">3</span></label><input type="range" id="smoothSlider" min="1" max="10" value="3"></div>
+            <div class="slider-group"><label>Harmonics <span id="harmonicVal" class="val">5</span></label><input type="range" id="harmonicSlider" min="1" max="50" value="5"></div>
+            <div class="slider-group"><label>Speed <span id="speedVal" class="val">1.0x</span></label><input type="range" id="speedSlider" min="1" max="30" value="10"></div>
+        </div>
+        <footer>Fourier Series Visualization</footer>
     </div>
-    <div class="toast" id="toast"></div>
+    <div id="toast" class="toast"></div>
     <script>
-    (() => {
-        'use strict';
+    (function() {
         const drawCanvas = document.getElementById('drawCanvas');
-        const drawCtx = drawCanvas.getContext('2d');
         const fourierCanvas = document.getElementById('fourierCanvas');
+        const drawCtx = drawCanvas.getContext('2d');
         const fourierCtx = fourierCanvas.getContext('2d');
-        const clearBtn = document.getElementById('clearBtn');
         const fitBtn = document.getElementById('fitBtn');
+        const clearBtn = document.getElementById('clearBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const resetViewBtn = document.getElementById('resetViewBtn');
         const trailBtn = document.getElementById('trailBtn');
         const smoothSlider = document.getElementById('smoothSlider');
-        const smoothVal = document.getElementById('smoothVal');
         const harmonicSlider = document.getElementById('harmonicSlider');
-        const harmonicVal = document.getElementById('harmonicVal');
         const speedSlider = document.getElementById('speedSlider');
+        const smoothVal = document.getElementById('smoothVal');
+        const harmonicVal = document.getElementById('harmonicVal');
         const speedVal = document.getElementById('speedVal');
-        const drawHint = document.getElementById('drawHint');
-        const toastEl = document.getElementById('toast');
         const infoSamples = document.getElementById('infoSamples');
         const infoHarmonics = document.getElementById('infoHarmonics');
         const infoError = document.getElementById('infoError');
-        const infoFPS = document.getElementById('infoFPS');
+        const drawHint = document.getElementById('drawHint');
+        const toast = document.getElementById('toast');
 
-        let isDrawing = false, rawPoints = [], smoothness = 3, harmonics = 20, speed = 1.0;
-        let fourier = [], time = 0, path = [], animationId = null, paused = false, trailFade = false;
-        let viewTx = 0, viewTy = 0, viewScale = 1.0;
-        let fpsFrames = 0, fpsLast = performance.now(), fpsDisplay = 0;
+        const cw = c => c.width, ch = c => c.height;
+        let rawPoints = [], fourier = [], path = [], time = 0;
+        let smoothness = 3, harmonics = 5, speed = 1;
+        let animationId = null, paused = false, trailFade = false;
+        let viewX = 0, viewY = 0, viewScale = 1;
+        let isDrawing = false, lastPt = null;
 
-        let toastTimer = null;
-        function showToast(msg, isError) {
-            toastEl.textContent = msg;
-            toastEl.className = 'toast show' + (isError ? ' error' : '');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => toastEl.className = 'toast', 2000);
-        }
-
-        const dpr = () => window.devicePixelRatio || 1;
-        const cw = (c) => c.width / dpr();
-        const ch = (c) => c.height / dpr();
-
-        function resizeCanvas(canvas, ctx, w, h) {
-            const d = dpr();
-            canvas.width = w * d; canvas.height = h * d;
-            canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
-            ctx.setTransform(d, 0, 0, d, 0, 0);
-        }
-
-        function fitCanvases() {
-            const lp = drawCanvas.parentElement.parentElement;
-            const rp = fourierCanvas.parentElement;
-            const lw = lp.clientWidth - 36, rw = rp.clientWidth - 36;
-            resizeCanvas(drawCanvas, drawCtx, Math.min(lw, 500), Math.min(lw, 500));
-            resizeCanvas(fourierCanvas, fourierCtx, Math.min(rw, 700), Math.min(rw, 700));
-        }
-        fitCanvases();
-        window.addEventListener('resize', fitCanvases);
-
-        function getPos(e, canvas) {
-            const rect = canvas.getBoundingClientRect();
-            const cx = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-            const cy = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-            const d = dpr();
-            return { x: (cx - rect.left) * cw(canvas) / rect.width, y: (cy - rect.top) * ch(canvas) / rect.height };
-        }
-
-        drawCanvas.addEventListener('mousedown', e => startDraw(e));
-        drawCanvas.addEventListener('mousemove', e => continueDraw(e));
-        drawCanvas.addEventListener('mouseup', e => endDraw(e));
-        drawCanvas.addEventListener('mouseleave', e => { if (isDrawing) endDraw(e); });
-        drawCanvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e); }, {passive:false});
-        drawCanvas.addEventListener('touchmove', e => { e.preventDefault(); continueDraw(e); }, {passive:false});
-        drawCanvas.addEventListener('touchend', e => { e.preventDefault(); endDraw(e); }, {passive:false});
-
-        function startDraw(e) {
-            isDrawing = true; rawPoints = []; drawHint.style.display = 'none';
-            stopAnimation(); drawCtx.clearRect(0, 0, cw(drawCanvas), ch(drawCanvas));
-            continueDraw(e);
-        }
-        function continueDraw(e) {
-            if (!isDrawing) return;
-            rawPoints.push(getPos(e, drawCanvas));
-            redrawDrawing();
-        }
-        function endDraw(e) {
-            if (!isDrawing) return; isDrawing = false;
-            if (rawPoints.length < 10) { showToast('曲线太短，请绘制更长的曲线', true); return; }
-            showToast('曲线已闭合，正在计算傅里叶级数...');
-            setTimeout(startFit, 50);
+        function showToast(msg, isError = false) {
+            toast.textContent = msg; toast.className = 'toast' + (isError ? ' error' : '');
+            setTimeout(() => toast.className = 'toast', 2000);
         }
 
         function redrawDrawing() {
-            const w = cw(drawCanvas), h = ch(drawCanvas);
-            drawCtx.clearRect(0, 0, w, h);
+            drawCtx.clearRect(0, 0, cw(drawCanvas), ch(drawCanvas));
             if (rawPoints.length < 2) return;
-            drawCtx.strokeStyle = '#ff6b6b'; drawCtx.lineWidth = 2.5;
-            drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
-            drawCtx.beginPath();
-            drawCtx.moveTo(rawPoints[0].x, rawPoints[0].y);
+            drawCtx.strokeStyle = '#3498db'; drawCtx.lineWidth = 2; drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+            drawCtx.beginPath(); drawCtx.moveTo(rawPoints[0].x, rawPoints[0].y);
             for (let i = 1; i < rawPoints.length; i++) drawCtx.lineTo(rawPoints[i].x, rawPoints[i].y);
-            drawCtx.lineTo(rawPoints[0].x, rawPoints[0].y);
             drawCtx.stroke();
-            drawCtx.fillStyle = '#00d2ff'; drawCtx.beginPath();
-            drawCtx.arc(rawPoints[0].x, rawPoints[0].y, 5, 0, 2*Math.PI); drawCtx.fill();
-            drawCtx.fillStyle = '#f39c12'; drawCtx.beginPath();
-            drawCtx.arc(rawPoints[rawPoints.length-1].x, rawPoints[rawPoints.length-1].y, 4, 0, 2*Math.PI); drawCtx.fill();
         }
 
-        function smoothPoints(pts, radius) {
-            if (pts.length < 3) return pts;
-            const out = [];
-            for (let i = 0; i < pts.length; i++) {
-                let sx = 0, sy = 0, cnt = 0;
-                for (let j = -radius; j <= radius; j++) {
-                    const idx = (i + j + pts.length) % pts.length;
-                    sx += pts[idx].x; sy += pts[idx].y; cnt++;
-                }
-                out.push({ x: sx/cnt, y: sy/cnt });
-            }
-            return out;
+        function getEventPos(e) {
+            const rect = drawCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
         }
 
-        function resampleClosed(pts, N) {
+        drawCanvas.addEventListener('mousedown', e => { isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); drawHint.style.display = 'none'; });
+        drawCanvas.addEventListener('mousemove', e => { if (!isDrawing || !lastPt) return; const pt = getEventPos(e); drawCtx.strokeStyle = '#3498db'; drawCtx.lineWidth = 2; drawCtx.beginPath(); drawCtx.moveTo(lastPt.x, lastPt.y); drawCtx.lineTo(pt.x, pt.y); drawCtx.stroke(); rawPoints.push(pt); lastPt = pt; });
+        drawCanvas.addEventListener('mouseup', () => { isDrawing = false; lastPt = null; rawPoints.push(rawPoints[0]); redrawDrawing(); });
+        drawCanvas.addEventListener('mouseleave', () => { if (isDrawing) { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } } });
+        drawCanvas.addEventListener('touchstart', e => { e.preventDefault(); isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); drawHint.style.display = 'none'; }, { passive: false });
+        drawCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!isDrawing || !lastPt) return; const pt = getEventPos(e); drawCtx.strokeStyle = '#3498db'; drawCtx.lineWidth = 2; drawCtx.beginPath(); drawCtx.moveTo(lastPt.x, lastPt.y); drawCtx.lineTo(pt.x, pt.y); drawCtx.stroke(); rawPoints.push(pt); lastPt = pt; }, { passive: false });
+        drawCanvas.addEventListener('touchend', () => { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } });
+
+        function dft(x) {
+            const N = x.length, re = [], im = [];
+            for (let k = 0; k < N; k++) { let sumRe = 0, sumIm = 0; for (let n = 0; n < N; n++) { const theta = 2*Math.PI*k*n/N; sumRe += x[n].x*Math.cos(theta) + x[n].y*Math.sin(theta); sumIm += x[n].y*Math.cos(theta) - x[n].x*Math.sin(theta); } re.push(sumRe/N); im.push(sumIm/N); }
+            return re.map((re, i) => ({ amp: Math.sqrt(re*re+im[i]*im[i]), phase: Math.atan2(im[i], re), freq: i === 0 ? 0 : 1 })).sort((a, b) => b.amp - a.amp);
+        }
+
+        function resample(pts, n) {
             if (pts.length < 2) return pts;
-            const cumLen = [0];
-            for (let i = 1; i <= pts.length; i++) {
-                const pi = pts[i % pts.length], pj = pts[i-1];
-                cumLen.push(cumLen[i-1] + Math.hypot(pi.x - pj.x, pi.y - pj.y));
-            }
-            const totalLen = cumLen[cumLen.length - 1];
-            if (totalLen < 1) return pts;
-            const step = totalLen / N, sampled = [];
-            let seg = 0;
-            for (let i = 0; i < N; i++) {
-                const target = i * step;
-                while (seg < pts.length - 1 && cumLen[seg+1] < target) seg++;
-                const segLen = cumLen[seg+1] - cumLen[seg];
-                const t = segLen > 0 ? (target - cumLen[seg]) / segLen : 0;
-                const a = pts[seg], b = pts[(seg+1) % pts.length];
-                sampled.push({ x: a.x + t*(b.x - a.x), y: a.y + t*(b.y - a.y) });
-            }
-            return sampled;
-        }
-        function dftClosed(pts) {
-            const N = pts.length;
-            let cx = 0, cy = 0;
-            for (const p of pts) { cx += p.x; cy += p.y; }
-            cx /= N; cy /= N;
-            const centered = pts.map(p => ({ x: p.x - cx, y: p.y - cy }));
-            const halfN = Math.floor(N / 2);
-            const freqOrder = [0];
-            for (let i = 1; i <= halfN; i++) { freqOrder.push(i); if (i !== N - i) freqOrder.push(-i); }
-            const coeffs = [];
-            for (const k of freqOrder) {
-                let re = 0, im = 0;
-                for (let n = 0; n < N; n++) {
-                    const angle = (2 * Math.PI * k * n) / N;
-                    const cosA = Math.cos(angle), sinA = Math.sin(angle);
-                    re += centered[n].x * cosA + centered[n].y * sinA;
-                    im += centered[n].y * cosA - centered[n].x * sinA;
-                }
-                re /= N; im /= N;
-                coeffs.push({ re, im, freq: k, amp: Math.hypot(re, im), phase: Math.atan2(im, re) });
-            }
-            coeffs.sort((a, b) => b.amp - a.amp);
-            return { coeffs, cx, cy };
+            const res = [], len = pts.length;
+            for (let i = 0; i < n; i++) { const t = i / n * len; const idx = Math.floor(t); const frac = t - idx; const p0 = pts[idx % len], p1 = pts[(idx + 1) % len]; res.push({ x: p0.x + frac*(p1.x-p0.x), y: p0.y + frac*(p1.y-p0.y) }); }
+            return res;
         }
 
-        function startFit() {
-            if (rawPoints.length < 10) { showToast('请先绘制一条曲线', true); return; }
-            stopAnimation();
-            let smoothed = smoothPoints(rawPoints, smoothness);
-            smoothed = smoothPoints(smoothed, Math.max(1, Math.floor(smoothness/2)));
-            const N = 256;
-            const sampled = resampleClosed(smoothed, N);
-            const result = dftClosed(sampled);
-            fourier = result.coeffs;
-            autoFitView(result.cx, result.cy);
-            harmonicSlider.max = fourier.length;
-            if (harmonics > fourier.length) harmonics = fourier.length;
-            harmonicSlider.value = harmonics;
-            harmonicVal.textContent = harmonics;
-            infoSamples.textContent = N; infoHarmonics.textContent = harmonics;
-            time = 0; path = []; paused = false; pauseBtn.textContent = '⏸️ 暂停';
-            redrawDrawing();
-            showToast('拟合开始！调节谐波数量观察拟合效果');
-            animate();
+        function smoothen(pts, k) {
+            if (pts.length < 2 || k <= 1) return pts;
+            const res = pts.slice();
+            for (let pass = 0; pass < k; pass++) { const tmp = res.slice(); for (let i = 0; i < res.length; i++) { const p0 = res[(i-1+res.length)%res.length], p1 = res[i], p2 = res[(i+1)%res.length]; tmp[i] = { x: (p0.x+4*p1.x+p2.x)/6, y: (p0.y+4*p1.y+p2.y)/6 }; } res.length = 0; res.push(...tmp); }
+            return res;
         }
 
         function autoFitView(cx, cy) {
-            const cwv = cw(fourierCanvas), chv = ch(fourierCanvas);
-            if (fourier.length === 0) { viewTx = cwv/2; viewTy = chv/2; viewScale = 1; return; }
-            let maxR = 0;
-            for (const c of fourier) maxR += c.amp;
-            maxR *= 1.15;
-            viewScale = Math.min(cwv, chv) / (2 * maxR);
-            viewTx = cwv / 2; viewTy = chv / 2;
+            if (fourier.length === 0) return;
+            let maxAmp = 0; for (const c of fourier) maxAmp = Math.max(maxAmp, c.amp);
+            const pad = 40, maxW = cw(fourierCanvas)-pad*2, maxH = ch(fourierCanvas)-pad*2;
+            viewScale = Math.min(maxW/(maxAmp*2), maxH/(maxAmp*2)); viewX = cx - maxW/2; viewY = cy - maxH/2;
         }
 
-        let isDragging = false, dragStart = null;
-        fourierCanvas.addEventListener('wheel', e => {
-            e.preventDefault();
-            viewScale *= e.deltaY < 0 ? 1.1 : 0.9;
-            viewScale = Math.max(0.05, Math.min(20, viewScale));
-        }, {passive:false});
-        fourierCanvas.addEventListener('mousedown', e => {
-            isDragging = true;
-            dragStart = { x: e.clientX, y: e.clientY, tx: viewTx, ty: viewTy };
-        });
-        window.addEventListener('mousemove', e => {
-            if (!isDragging) return;
-            viewTx = dragStart.tx + (e.clientX - dragStart.x);
-            viewTy = dragStart.ty + (e.clientY - dragStart.y);
-        });
-        window.addEventListener('mouseup', () => { isDragging = false; });
-
-        function animate(timestamp) {
-            if (!timestamp) timestamp = performance.now();
-            fpsFrames++;
-            if (timestamp - fpsLast >= 1000) { fpsDisplay = fpsFrames; fpsFrames = 0; fpsLast = timestamp; infoFPS.textContent = fpsDisplay; }
-            if (paused) { animationId = requestAnimationFrame(animate); return; }
-            const cwv = cw(fourierCanvas), chv = ch(fourierCanvas);
-            if (trailFade) { fourierCtx.fillStyle = 'rgba(15,12,41,0.08)'; fourierCtx.fillRect(0, 0, cwv, chv); }
-            else { fourierCtx.clearRect(0, 0, cwv, chv); }
-            fourierCtx.save();
-            fourierCtx.translate(viewTx, viewTy);
-            fourierCtx.scale(viewScale, viewScale);
-            // Draw original curve faintly
-            if (rawPoints.length > 2) {
-                fourierCtx.strokeStyle = 'rgba(255,107,107,0.25)'; fourierCtx.lineWidth = 1.5/viewScale;
-                fourierCtx.beginPath();
-                let shifted = rawPoints.map(p => ({
-                    x: p.x - cw(drawCanvas)/2, y: p.y - ch(drawCanvas)/2
-                }));
-                let sm = smoothPoints(shifted, smoothness);
-                fourierCtx.moveTo(sm[0].x, sm[0].y);
-                for (let i = 1; i < sm.length; i++) fourierCtx.lineTo(sm[i].x, sm[i].y);
-                fourierCtx.lineTo(sm[0].x, sm[0].y);
-                fourierCtx.stroke();
-            }
-            const pen = drawEpicycles(fourierCtx, 0, 0, time, harmonics);
-            path.unshift({ x: pen.x, y: pen.y });
-            if (path.length > fourier.length + 10) path.length = fourier.length + 10;
-            fourierCtx.strokeStyle = '#00d2ff'; fourierCtx.lineWidth = 2.5/viewScale;
-            fourierCtx.lineCap = 'round'; fourierCtx.lineJoin = 'round';
-            fourierCtx.shadowColor = 'rgba(0,210,255,0.4)'; fourierCtx.shadowBlur = 6/viewScale;
-            fourierCtx.beginPath(); fourierCtx.moveTo(path[0].x, path[0].y);
-            for (let i = 1; i < path.length; i++) fourierCtx.lineTo(path[i].x, path[i].y);
-            fourierCtx.stroke(); fourierCtx.shadowBlur = 0;
-            fourierCtx.restore();
-            const dt = speed * (2 * Math.PI) / (fourier.length || 1);
-            time += dt;
-            if (time >= 2 * Math.PI) { time -= 2 * Math.PI; path = []; }
-            if (fpsFrames % 15 === 0 && fourier.length > 0) {
-                infoError.textContent = (computeError() * 100).toFixed(1) + '%';
-            }
-            animationId = requestAnimationFrame(animate);
+        function startFit() {
+            if (rawPoints.length < 10) { showToast('Draw more points first!', true); return; }
+            const resampled = smoothen(resample(rawPoints, 256), smoothness);
+            fourier = dft(resampled); infoSamples.textContent = rawPoints.length; infoHarmonics.textContent = harmonics;
+            infoError.textContent = (computeError()*100).toFixed(1)+'%';
+            autoFitView(cw(fourierCanvas)/2, ch(fourierCanvas)/2);
+            if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
+            path = []; time = 0; animate();
         }
+
+        function animate() {
+            const dt = 0.02/speed; time += dt; path = [];
+            for (let i = 0; i < pathLength; i++) { const t = (time - i*dt/pathLength) % 1; if (t < 0) continue; let px = 0, py = 0; for (let j = 0; j < Math.min(harmonics, fourier.length); j++) { const { freq, amp, phase } = fourier[j]; px += amp*Math.cos(freq*2*Math.PI*t+phase); py += amp*Math.sin(freq*2*Math.PI*t+phase); } path.push({ x: px, y: py }); }
+            draw(); animationId = requestAnimationFrame(animate);
+        }
+
+        function draw() {
+            const fw = cw(fourierCanvas), fh = ch(fourierCanvas), cx = fw/2+viewX, cy = fh/2+viewY;
+            if (trailFade) fourierCtx.fillStyle = 'rgba(15,12,41,0.08)'; else fourierCtx.clearRect(0, 0, fw, fh);
+            if (trailFade) fourierCtx.fillRect(0, 0, fw, fh);
+            fourierCtx.strokeStyle = '#e74c3c'; fourierCtx.lineWidth = 2/viewScale;
+            if (path.length > 1) { fourierCtx.beginPath(); fourierCtx.moveTo(cx+path[0].x*viewScale, cy+path[0].y*viewScale); for (let i = 1; i < path.length; i++) fourierCtx.lineTo(cx+path[i].x*viewScale, cy+path[i].y*viewScale); fourierCtx.stroke(); }
+            if (fourier.length > 0) { const ep = drawEpicycles(fourierCtx, cx, cy, time, harmonics); fourierCtx.strokeStyle = '#3498db'; fourierCtx.lineWidth = 1.5/viewScale; fourierCtx.beginPath(); fourierCtx.moveTo(ep.x, ep.y); fourierCtx.lineTo(path[path.length-1].x*viewScale+cx, path[path.length-1].y*viewScale+cy); fourierCtx.stroke(); }
+            if (!trailFade) { fourierCtx.fillStyle = 'rgba(255,255,255,0.03)'; fourierCtx.fillRect(0, 0, fw, fh); }
+        }
+
         function drawEpicycles(ctx, x, y, t, n) {
             let cx = x, cy = y;
             const limit = Math.min(n, fourier.length);
@@ -403,7 +247,7 @@
         function stopAnimation() {
             if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
             fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
-            paused = false; pauseBtn.textContent = '⏸️ 暂停';
+            paused = false; pauseBtn.textContent = '⏸️ Pause';
         }
 
         clearBtn.addEventListener('click', () => {
@@ -412,7 +256,7 @@
             fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
             drawHint.style.display = '';
             infoSamples.textContent = '0'; infoHarmonics.textContent = '0'; infoError.textContent = '-';
-            showToast('已清除');
+            showToast('Cleared');
         });
 
         fitBtn.addEventListener('click', startFit);
@@ -426,11 +270,11 @@
 
         pauseBtn.addEventListener('click', () => {
             if (!animationId) return;
-            paused = !paused; pauseBtn.textContent = paused ? '▶️ 继续' : '⏸️ 暂停';
+            paused = !paused; pauseBtn.textContent = paused ? '▶️ Resume' : '⏸️ Pause';
         });
         resetViewBtn.addEventListener('click', () => { if (fourier.length > 0) autoFitView(0,0); });
         trailBtn.addEventListener('click', () => {
-            trailFade = !trailFade; trailBtn.textContent = trailFade ? '✨ 轨迹渐隐 (开)' : '✨ 轨迹渐隐';
+            trailFade = !trailFade; trailBtn.textContent = trailFade ? '✨ Trail Fade (On)' : '✨ Trail Fade';
        });
 
         const presets = {
@@ -453,7 +297,7 @@
                     rawPoints.push({ x: ccx+p.x*scale, y: ccy+p.y*scale });
                 }
                 redrawDrawing();
-                showToast('已加载预设: ' + btn.textContent.trim());
+                showToast('Preset loaded: ' + btn.textContent.trim());
                 setTimeout(startFit, 50);
             });
         });
