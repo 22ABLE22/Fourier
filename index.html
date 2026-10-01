@@ -5,58 +5,72 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fourier Series Closed Curve Fitting</title>
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; }
-        body { background:linear-gradient(135deg,#0f0c29,#302b63,#24243e); color:#e0e0e0; min-height:100vh; overflow-x:hidden; }
-        .container { max-width:1400px; margin:0 auto; padding:15px; }
-        header { text-align:center; padding:20px 15px; background:rgba(255,255,255,0.05); border-radius:16px; backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.08); margin-bottom:15px; }
-        h1 { font-size:2.2rem; margin-bottom:8px; background:linear-gradient(90deg,#00d2ff,#3a7bd5,#f953c6); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
-        .subtitle { font-size:1rem; opacity:0.7; line-height:1.5; }
-        .main-layout { display:grid; grid-template-columns:1fr 1.5fr; gap:15px; margin-bottom:15px; }
-        @media(max-width:900px) { .main-layout { grid-template-columns:1fr; } }
-        .panel { background:rgba(255,255,255,0.05); border-radius:16px; padding:18px; backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.08); }
-        .panel h2 { text-align:center; font-size:1.2rem; margin-bottom:12px; color:#a0c4ff; }
-        canvas { display:block; background:rgba(0,0,0,0.3); border-radius:10px; margin:0 auto; cursor:crosshair; border:1px solid rgba(255,255,255,0.06); }
-        .controls { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:12px; }
-        button { padding:8px 18px; background:linear-gradient(135deg,#3a7bd5,#00d2ff); color:white; border:none; border-radius:20px; font-size:0.85rem; cursor:pointer; transition:all 0.25s; box-shadow:0 2px 8px rgba(0,0,0,0.3); }
-        button:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+        :root { --bg:#f4f6f9; --card:#ffffff; --line:#e4e8ef; --line-soft:#eef1f6; --text:#1f2937; --muted:#6b7280; --brand:#4f46e5; --blue:#2563eb; --green:#10b981; }
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif; }
+        html, body { height:100%; }
+        body { background:var(--bg); color:var(--text); overflow:hidden; -webkit-font-smoothing:antialiased; }
+        .app { height:100vh; max-width:1560px; margin:0 auto; padding:14px 18px; display:flex; flex-direction:column; gap:12px; }
+        header { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px 20px; background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 2px rgba(16,24,40,0.05); }
+        h1 { display:flex; align-items:center; gap:9px; font-size:1.2rem; font-weight:600; letter-spacing:-0.01em; color:#111827; }
+        h1 .logo { display:flex; align-items:center; justify-content:center; width:27px; height:27px; border-radius:8px; background:linear-gradient(135deg,#6366f1,#22d3ee); font-size:15px; line-height:1; }
+        .subtitle { font-size:0.79rem; color:var(--muted); }
+        .main-layout { flex:1 1 auto; min-height:0; display:flex; gap:12px; }
+        .panel { display:flex; flex-direction:column; min-height:0; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; box-shadow:0 1px 2px rgba(16,24,40,0.05); }
+        .panel h2 { flex:0 0 auto; display:flex; align-items:center; gap:6px; margin-bottom:10px; font-size:0.72rem; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:var(--muted); }
+        .col-left { flex:0 0 330px; }
+        .col-right { flex:1 1 auto; }
+        .canvas-wrap { position:relative; flex:1 1 auto; min-height:0; }
+        .canvas-wrap canvas { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:block; max-width:100%; max-height:100%; background:#fdfefe; border-radius:10px; box-shadow:inset 0 0 0 1px var(--line-soft); cursor:crosshair; }
+        #fourierCanvas { cursor:default; }
+        .drawing-hint { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100%; padding:0 14px; text-align:center; font-size:0.85rem; line-height:1.6; color:#b3bdcc; pointer-events:none; }
+        .controls { flex:0 0 auto; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:12px; }
+        button { padding:8px 16px; font-size:0.82rem; font-weight:500; color:#374151; background:#fff; border:1px solid #d5dbe4; border-radius:8px; cursor:pointer; box-shadow:0 1px 2px rgba(16,24,40,0.04); transition:background .15s,border-color .15s,color .15s,transform .06s; }
+        button:hover { background:#f6f8fb; border-color:#c2cad7; }
         button:active { transform:translateY(1px); }
-        button.danger { background:linear-gradient(135deg,#e74c3c,#c0392b); }
-        button.success { background:linear-gradient(135deg,#27ae60,#2ecc71); }
-        button.warning { background:linear-gradient(135deg,#f39c12,#e67e22); }
-        button.preset { background:linear-gradient(135deg,#8e44ad,#9b59b6); font-size:0.78rem; padding:6px 12px; }
-        .slider-group { margin:10px 0; }
-        .slider-group label { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:0.85rem; color:#b0b0b0; }
-        .slider-group label span.val { color:#00d2ff; font-weight:600; }
-        input[type="range"] { width:100%; height:6px; border-radius:3px; background:rgba(255,255,255,0.1); outline:none; -webkit-appearance:none; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:linear-gradient(135deg,#00d2ff,#3a7bd5); cursor:pointer; box-shadow:0 0 6px rgba(0,210,255,0.5); }
-        .preset-row { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:10px; }
-        .info-bar { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-top:12px; }
-        .info-cell { background:rgba(0,0,0,0.25); border-radius:10px; padding:10px 12px; text-align:center; border:1px solid rgba(255,255,255,0.05); }
-        .info-cell .label { font-size:0.72rem; color:#888; text-transform:uppercase; letter-spacing:0.5px; }
-        .info-cell .value { font-size:1.3rem; font-weight:700; color:#00d2ff; margin-top:2px; }
-        .legend { display:flex; justify-content:center; gap:16px; margin-top:10px; flex-wrap:wrap; font-size:0.78rem; }
-        .legend-item { display:flex; align-items:center; gap:5px; }
-        .legend-dot { width:10px; height:10px; border-radius:50%; }
-        footer { text-align:center; margin-top:15px; padding:12px; font-size:0.8rem; opacity:0.5; }
-        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%) translateY(-100px); background:rgba(39,174,96,0.95); color:white; padding:10px 24px; border-radius:25px; font-size:0.9rem; z-index:999; transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1); pointer-events:none; }
+        button.success { color:#fff; background:var(--green); border-color:var(--green); }
+        button.success:hover { background:#0da271; border-color:#0da271; }
+        button.danger { color:#dc2626; border-color:#f2b8b5; }
+        button.danger:hover { background:#fef2f2; border-color:#e9a09c; }
+        button.preset { padding:7px 13px; font-size:0.79rem; color:#6d28d9; border-color:#ddd6fe; }
+        button.preset:hover { background:#f5f3ff; border-color:#c4b5fd; }
+        .info-bar { flex:0 0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:12px; }
+        .info-cell { padding:7px 4px; text-align:center; background:#f8fafc; border:1px solid var(--line-soft); border-radius:9px; }
+        .info-cell .label { font-size:0.63rem; letter-spacing:0.06em; text-transform:uppercase; color:#8b97a8; }
+        .info-cell .value { margin-top:2px; font-size:1.02rem; font-weight:600; color:var(--blue); font-variant-numeric:tabular-nums; }
+        .legend { flex:0 0 auto; display:flex; flex-wrap:wrap; justify-content:center; gap:18px; margin-top:10px; font-size:0.75rem; color:var(--muted); }
+        .legend-item { display:flex; align-items:center; gap:6px; }
+        .legend-dot { width:9px; height:9px; border-radius:50%; }
+        .bottom-row { flex:0 0 auto; display:flex; gap:12px; }
+        .bottom-row .panel { flex:1 1 0; }
+        .preset-row { display:flex; flex-wrap:wrap; gap:8px; }
+        .slider-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+        .slider-group { display:flex; flex-direction:column; gap:6px; }
+        .slider-group label { display:flex; align-items:center; justify-content:space-between; font-size:0.78rem; color:#4b5563; }
+        .slider-group label span.val { color:var(--brand); font-weight:600; font-variant-numeric:tabular-nums; }
+        input[type="range"] { width:100%; height:5px; border-radius:3px; background:#e6eaf1; outline:none; -webkit-appearance:none; appearance:none; cursor:pointer; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:var(--brand); border:2px solid #fff; box-shadow:0 1px 3px rgba(79,70,229,0.4); cursor:pointer; }
+        input[type="range"]::-moz-range-thumb { width:13px; height:13px; border:2px solid #fff; border-radius:50%; background:var(--brand); box-shadow:0 1px 3px rgba(79,70,229,0.4); cursor:pointer; }
+        footer { flex:0 0 auto; text-align:center; font-size:0.71rem; color:#9aa5b4; }
+        .toast { position:fixed; top:16px; left:50%; z-index:999; padding:9px 20px; font-size:0.82rem; color:#fff; background:#111827; border-radius:9px; box-shadow:0 8px 24px rgba(16,24,40,0.18); transform:translateX(-50%) translateY(-160%); transition:transform .35s cubic-bezier(.34,1.4,.64,1); pointer-events:none; }
         .toast.show { transform:translateX(-50%) translateY(0); }
-        .toast.error { background:rgba(231,76,60,0.95); }
-        .drawing-hint { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:rgba(255,255,255,0.15); font-size:1.1rem; pointer-events:none; text-align:center; line-height:1.6; }
-        .canvas-wrap { position:relative; display:flex; justify-content:center; }
+        .toast.error { background:#dc2626; }
+        @media (max-height:800px) { .app { padding:10px 14px; gap:9px; } header { padding:8px 16px; } h1 { font-size:1.08rem; } .panel { padding:11px; } .panel h2 { margin-bottom:8px; } .controls { margin-top:9px; } .info-bar { margin-top:9px; } .legend { margin-top:8px; } footer { font-size:0.67rem; } }
+        @media (max-width:1180px) { .col-left { flex:0 0 288px; } }
+        @media (max-width:900px) { body { overflow:auto; } .app { height:auto; padding:14px; } header { flex-direction:column; align-items:flex-start; gap:4px; } .main-layout { flex-direction:column; } .col-left { flex:0 0 auto; } .canvas-wrap { height:min(70vw,420px); } .bottom-row { flex-direction:column; } .slider-grid { grid-template-columns:1fr; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="app">
         <header>
-            <h1>Fourier Series Closed Curve Fitting</h1>
-            <p class="subtitle">Draw any closed curve and observe how Fourier series approximates it through rotating circles</p>
+            <h1><span class="logo">📈</span>Fourier Series Closed Curve Fitting</h1>
+            <p class="subtitle">Draw a closed curve on the left, then watch rotating circles trace it back on the right</p>
         </header>
         <div class="main-layout">
-            <div class="panel">
-                <h2>Drawing Canvas</h2>
+            <div class="panel col-left">
+                <h2>✏️ Drawing Canvas</h2>
                 <div class="canvas-wrap">
                     <canvas id="drawCanvas" width="320" height="320"></canvas>
-                    <div id="drawHint" class="drawing-hint">Draw a closed curve below</div>
+                    <div id="drawHint" class="drawing-hint">Draw a closed curve here</div>
                 </div>
                 <div class="controls">
                     <button id="fitBtn" class="success">🎨 Fit</button>
@@ -65,41 +79,49 @@
                 <div class="info-bar">
                     <div class="info-cell"><div class="label">Points</div><div id="infoSamples" class="value">0</div></div>
                     <div class="info-cell"><div class="label">Harmonics</div><div id="infoHarmonics" class="value">0</div></div>
-                    <div class="info-cell"><div class="label">Fit Error</div><div id="infoError" class="value">-</div></div>
+                    <div class="info-cell"><div class="label">Error</div><div id="infoError" class="value">-</div></div>
                 </div>
             </div>
-            <div class="panel">
-                <h2>Fourier Epicycles</h2>
-                <canvas id="fourierCanvas" width="600" height="600"></canvas>
+            <div class="panel col-right">
+                <h2>🌀 Fourier Epicycles</h2>
+                <div class="canvas-wrap">
+                    <canvas id="fourierCanvas" width="600" height="600"></canvas>
+                </div>
                 <div class="controls">
                     <button id="pauseBtn">⏸️ Pause</button>
                     <button id="resetViewBtn">🔄 Reset View</button>
                     <button id="trailBtn">✨ Trail Fade</button>
                 </div>
                 <div class="legend">
-                    <div class="legend-item"><div class="legend-dot" style="background:#3498db"></div><span>Drawing</span></div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#e74c3c"></div><span>Fit</span></div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#f39c12"></div><span>Circles</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div><span>Trace</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div><span>Epicycles</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div><span>Pen</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div><span>Connector</span></div>
                 </div>
             </div>
         </div>
-        <div class="panel">
-            <h2>Presets</h2>
-            <div class="preset-row">
-                <button class="preset" data-preset="heart">❤️ Heart</button>
-                <button class="preset" data-preset="star">⭐ Star</button>
-                <button class="preset" data-preset="butterfly">🦋 Butterfly</button>
-                <button class="preset" data-preset="treble">🎵 Treble Clef</button>
-                <button class="preset" data-preset="arrow">➡️ Arrow</button>
-                <button class="preset" data-preset="infinity">♾️ Infinity</button>
+        <div class="bottom-row">
+            <div class="panel">
+                <h2>⚡ Presets</h2>
+                <div class="preset-row">
+                    <button class="preset" data-preset="heart">❤️ Heart</button>
+                    <button class="preset" data-preset="star">⭐ Star</button>
+                    <button class="preset" data-preset="butterfly">🦋 Butterfly</button>
+                    <button class="preset" data-preset="treble">🎵 Treble Clef</button>
+                    <button class="preset" data-preset="arrow">➡️ Arrow</button>
+                    <button class="preset" data-preset="infinity">♾️ Infinity</button>
+                </div>
+            </div>
+            <div class="panel">
+                <h2>🎛️ Controls</h2>
+                <div class="slider-grid">
+                    <div class="slider-group"><label>Smoothness <span id="smoothVal" class="val">3</span></label><input type="range" id="smoothSlider" min="1" max="10" value="3"></div>
+                    <div class="slider-group"><label>Harmonics <span id="harmonicVal" class="val">5</span></label><input type="range" id="harmonicSlider" min="1" max="50" value="5"></div>
+                    <div class="slider-group"><label>Speed <span id="speedVal" class="val">1.0x</span></label><input type="range" id="speedSlider" min="1" max="30" value="10"></div>
+                </div>
             </div>
         </div>
-        <div class="panel">
-            <div class="slider-group"><label>Smoothness <span id="smoothVal" class="val">3</span></label><input type="range" id="smoothSlider" min="1" max="10" value="3"></div>
-            <div class="slider-group"><label>Harmonics <span id="harmonicVal" class="val">5</span></label><input type="range" id="harmonicSlider" min="1" max="50" value="5"></div>
-            <div class="slider-group"><label>Speed <span id="speedVal" class="val">1.0x</span></label><input type="range" id="speedSlider" min="1" max="30" value="10"></div>
-        </div>
-        <footer>Fourier Series Visualization</footer>
+        <footer>Fourier Series Visualization · HTML5 Canvas</footer>
     </div>
     <div id="toast" class="toast"></div>
     <script>
@@ -133,14 +155,14 @@
         let isDrawing = false, lastPt = null;
 
         function showToast(msg, isError = false) {
-            toast.textContent = msg; toast.className = 'toast' + (isError ? ' error' : '');
+            toast.textContent = msg; toast.className = 'toast show' + (isError ? ' error' : '');
             setTimeout(() => toast.className = 'toast', 2000);
         }
 
         function redrawDrawing() {
             drawCtx.clearRect(0, 0, cw(drawCanvas), ch(drawCanvas));
             if (rawPoints.length < 2) return;
-            drawCtx.strokeStyle = '#3498db'; drawCtx.lineWidth = 2; drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+            drawCtx.strokeStyle = '#2563eb'; drawCtx.lineWidth = 2; drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
             drawCtx.beginPath(); drawCtx.moveTo(rawPoints[0].x, rawPoints[0].y);
             for (let i = 1; i < rawPoints.length; i++) drawCtx.lineTo(rawPoints[i].x, rawPoints[i].y);
             drawCtx.stroke();
@@ -150,21 +172,39 @@
             const rect = drawCanvas.getBoundingClientRect();
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return { x: clientX - rect.left, y: clientY - rect.top };
+            const sx = cw(drawCanvas) / rect.width, sy = ch(drawCanvas) / rect.height;
+            return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sy };
         }
 
         drawCanvas.addEventListener('mousedown', e => { isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); drawHint.style.display = 'none'; });
-        drawCanvas.addEventListener('mousemove', e => { if (!isDrawing || !lastPt) return; const pt = getEventPos(e); drawCtx.strokeStyle = '#3498db'; drawCtx.lineWidth = 2; drawCtx.beginPath(); drawCtx.moveTo(lastPt.x, lastPt.y); drawCtx.lineTo(pt.x, pt.y); drawCtx.stroke(); rawPoints.push(pt); lastPt = pt; });
+        drawCanvas.addEventListener('mousemove', e => { if (!isDrawing || !lastPt) return; const pt = getEventPos(e); drawCtx.strokeStyle = '#2563eb'; drawCtx.lineWidth = 2; drawCtx.beginPath(); drawCtx.moveTo(lastPt.x, lastPt.y); drawCtx.lineTo(pt.x, pt.y); drawCtx.stroke(); rawPoints.push(pt); lastPt = pt; });
         drawCanvas.addEventListener('mouseup', () => { isDrawing = false; lastPt = null; rawPoints.push(rawPoints[0]); redrawDrawing(); });
         drawCanvas.addEventListener('mouseleave', () => { if (isDrawing) { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } } });
         drawCanvas.addEventListener('touchstart', e => { e.preventDefault(); isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); drawHint.style.display = 'none'; }, { passive: false });
-        drawCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!isDrawing || !lastPt) return; const pt = getEventPos(e); drawCtx.strokeStyle = '#3498db'; drawCtx.lineWidth = 2; drawCtx.beginPath(); drawCtx.moveTo(lastPt.x, lastPt.y); drawCtx.lineTo(pt.x, pt.y); drawCtx.stroke(); rawPoints.push(pt); lastPt = pt; }, { passive: false });
+        drawCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!isDrawing || !lastPt) return; const pt = getEventPos(e); drawCtx.strokeStyle = '#2563eb'; drawCtx.lineWidth = 2; drawCtx.beginPath(); drawCtx.moveTo(lastPt.x, lastPt.y); drawCtx.lineTo(pt.x, pt.y); drawCtx.stroke(); rawPoints.push(pt); lastPt = pt; }, { passive: false });
         drawCanvas.addEventListener('touchend', () => { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } });
 
-        function dft(x) {
-            const N = x.length, re = [], im = [];
-            for (let k = 0; k < N; k++) { let sumRe = 0, sumIm = 0; for (let n = 0; n < N; n++) { const theta = 2*Math.PI*k*n/N; sumRe += x[n].x*Math.cos(theta) + x[n].y*Math.sin(theta); sumIm += x[n].y*Math.cos(theta) - x[n].x*Math.sin(theta); } re.push(sumRe/N); im.push(sumIm/N); }
-            return re.map((re, i) => ({ amp: Math.sqrt(re*re+im[i]*im[i]), phase: Math.atan2(im[i], re), freq: i === 0 ? 0 : 1 })).sort((a, b) => b.amp - a.amp);
+        function dft(pts) {
+            const N = pts.length;
+            let mx = 0, my = 0;
+            for (const p of pts) { mx += p.x; my += p.y; }
+            mx /= N; my /= N;
+            const halfN = Math.floor(N / 2);
+            const freqOrder = [0];
+            for (let i = 1; i <= halfN; i++) { freqOrder.push(i); if (i !== N - i) freqOrder.push(-i); }
+            const coeffs = [];
+            for (const k of freqOrder) {
+                let re = 0, im = 0;
+                for (let n = 0; n < N; n++) {
+                    const theta = 2*Math.PI*k*n/N, px = pts[n].x - mx, py = pts[n].y - my;
+                    re += px*Math.cos(theta) + py*Math.sin(theta);
+                    im += py*Math.cos(theta) - px*Math.sin(theta);
+                }
+                re /= N; im /= N;
+                coeffs.push({ amp: Math.hypot(re, im), phase: Math.atan2(im, re), freq: k });
+            }
+            coeffs.sort((a, b) => b.amp - a.amp);
+            return coeffs;
         }
 
         function resample(pts, n) {
@@ -181,11 +221,13 @@
             return res;
         }
 
-        function autoFitView(cx, cy) {
-            if (fourier.length === 0) return;
-            let maxAmp = 0; for (const c of fourier) maxAmp = Math.max(maxAmp, c.amp);
+        function autoFitView() {
+            viewX = 0; viewY = 0;
+            if (fourier.length === 0) { viewScale = 1; return; }
+            let maxR = 0; for (const c of fourier) maxR += c.amp;
+            maxR = Math.max(maxR, 1e-6) * 1.15;
             const pad = 40, maxW = cw(fourierCanvas)-pad*2, maxH = ch(fourierCanvas)-pad*2;
-            viewScale = Math.min(maxW/(maxAmp*2), maxH/(maxAmp*2)); viewX = cx - maxW/2; viewY = cy - maxH/2;
+            viewScale = Math.min(maxW, maxH) / (2*maxR);
         }
 
         function startFit() {
@@ -193,25 +235,31 @@
             const resampled = smoothen(resample(rawPoints, 256), smoothness);
             fourier = dft(resampled); infoSamples.textContent = rawPoints.length; infoHarmonics.textContent = harmonics;
             infoError.textContent = (computeError()*100).toFixed(1)+'%';
-            autoFitView(cw(fourierCanvas)/2, ch(fourierCanvas)/2);
+            autoFitView();
             if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
             path = []; time = 0; animate();
         }
 
         function animate() {
-            const dt = 0.02/speed; time += dt; path = [];
-            for (let i = 0; i < pathLength; i++) { const t = (time - i*dt/pathLength) % 1; if (t < 0) continue; let px = 0, py = 0; for (let j = 0; j < Math.min(harmonics, fourier.length); j++) { const { freq, amp, phase } = fourier[j]; px += amp*Math.cos(freq*2*Math.PI*t+phase); py += amp*Math.sin(freq*2*Math.PI*t+phase); } path.push({ x: px, y: py }); }
+            if (paused) { animationId = requestAnimationFrame(animate); return; }
+            const dt = 0.02/speed; time = (time + dt) % 1; path = [];
+            const steps = 240, limit = Math.min(harmonics, fourier.length);
+            for (let i = 0; i < steps; i++) {
+                const t = ((time - i/steps) % 1 + 1) % 1;
+                let px = 0, py = 0;
+                for (let j = 0; j < limit; j++) { const { freq, amp, phase } = fourier[j]; const a = freq*2*Math.PI*t + phase; px += amp*Math.cos(a); py += amp*Math.sin(a); }
+                path.push({ x: px, y: py });
+            }
             draw(); animationId = requestAnimationFrame(animate);
         }
 
         function draw() {
             const fw = cw(fourierCanvas), fh = ch(fourierCanvas), cx = fw/2+viewX, cy = fh/2+viewY;
-            if (trailFade) fourierCtx.fillStyle = 'rgba(15,12,41,0.08)'; else fourierCtx.clearRect(0, 0, fw, fh);
-            if (trailFade) fourierCtx.fillRect(0, 0, fw, fh);
-            fourierCtx.strokeStyle = '#e74c3c'; fourierCtx.lineWidth = 2/viewScale;
+            if (trailFade) { fourierCtx.fillStyle = 'rgba(255,255,255,0.14)'; fourierCtx.fillRect(0, 0, fw, fh); }
+            else fourierCtx.clearRect(0, 0, fw, fh);
+            fourierCtx.strokeStyle = '#ef4444'; fourierCtx.lineWidth = 2/viewScale;
             if (path.length > 1) { fourierCtx.beginPath(); fourierCtx.moveTo(cx+path[0].x*viewScale, cy+path[0].y*viewScale); for (let i = 1; i < path.length; i++) fourierCtx.lineTo(cx+path[i].x*viewScale, cy+path[i].y*viewScale); fourierCtx.stroke(); }
-            if (fourier.length > 0) { const ep = drawEpicycles(fourierCtx, cx, cy, time, harmonics); fourierCtx.strokeStyle = '#3498db'; fourierCtx.lineWidth = 1.5/viewScale; fourierCtx.beginPath(); fourierCtx.moveTo(ep.x, ep.y); fourierCtx.lineTo(path[path.length-1].x*viewScale+cx, path[path.length-1].y*viewScale+cy); fourierCtx.stroke(); }
-            if (!trailFade) { fourierCtx.fillStyle = 'rgba(255,255,255,0.03)'; fourierCtx.fillRect(0, 0, fw, fh); }
+            if (fourier.length > 0 && path.length > 0) { const ep = drawEpicycles(fourierCtx, cx, cy, time, harmonics); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 1.5/viewScale; fourierCtx.beginPath(); fourierCtx.moveTo(ep.x, ep.y); fourierCtx.lineTo(path[path.length-1].x*viewScale+cx, path[path.length-1].y*viewScale+cy); fourierCtx.stroke(); }
         }
 
         function drawEpicycles(ctx, x, y, t, n) {
@@ -220,17 +268,16 @@
             for (let i = 0; i < limit; i++) {
                 const prevX = cx, prevY = cy;
                 const { freq, amp, phase } = fourier[i];
-                const angle = freq * t + phase;
+                const angle = freq * 2*Math.PI*t + phase;
                 cx += amp * Math.cos(angle);
                 cy += amp * Math.sin(angle);
-                const alpha = Math.max(0.08, 0.5 - i * 0.004);
-                ctx.strokeStyle = `rgba(243,156,18,${alpha})`; ctx.lineWidth = 1/viewScale;
+                const alpha = Math.max(0.18, 0.6 - i * 0.005);
+                ctx.strokeStyle = `rgba(245,158,11,${alpha})`; ctx.lineWidth = 1/viewScale;
                 ctx.beginPath(); ctx.arc(prevX, prevY, amp, 0, 2*Math.PI); ctx.stroke();
-                ctx.strokeStyle = `rgba(243,156,18,${alpha*0.8})`;
+                ctx.strokeStyle = `rgba(245,158,11,${alpha*0.7})`;
                 ctx.beginPath(); ctx.moveTo(prevX, prevY); ctx.lineTo(cx, cy); ctx.stroke();
             }
-            ctx.fillStyle = '#9b59b6'; ctx.shadowColor = 'rgba(155,89,182,0.6)'; ctx.shadowBlur = 8/viewScale;
-            ctx.beginPath(); ctx.arc(cx, cy, 4/viewScale, 0, 2*Math.PI); ctx.fill(); ctx.shadowBlur = 0;
+            ctx.fillStyle = '#7c3aed'; ctx.shadowColor = 'rgba(124,58,237,0.35)'; ctx.shadowBlur = 8/viewScale;
             return { x: cx, y: cy };
         }
 
@@ -272,7 +319,7 @@
             if (!animationId) return;
             paused = !paused; pauseBtn.textContent = paused ? '▶️ Resume' : '⏸️ Pause';
         });
-        resetViewBtn.addEventListener('click', () => { if (fourier.length > 0) autoFitView(0,0); });
+        resetViewBtn.addEventListener('click', () => { autoFitView(); });
         trailBtn.addEventListener('click', () => {
             trailFade = !trailFade; trailBtn.textContent = trailFade ? '✨ Trail Fade (On)' : '✨ Trail Fade';
        });
