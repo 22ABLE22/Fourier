@@ -30,6 +30,8 @@
         button { padding:8px 14px; font-size:0.8rem; font-weight:500; color:#374151; background:#fff; border:1px solid #d5dbe4; border-radius:8px; cursor:pointer; box-shadow:0 1px 2px rgba(16,24,40,0.04); transition:background .15s,border-color .15s,color .15s,transform .06s; }
         button:hover { background:#f6f8fb; border-color:#c2cad7; }
         button:active { transform:translateY(1px); }
+        button[aria-pressed="true"] { background:#f5f3ff; border-color:#c4b5fd; color:#4c1d95; }
+        button[aria-pressed="false"] { color:#6b7280; background:#f9fafb; }
         button.success { color:#fff; background:var(--green); border-color:var(--green); }
         button.success:hover { background:#0da271; border-color:#0da271; }
         button.danger { color:#dc2626; border-color:#f2b8b5; }
@@ -86,6 +88,8 @@
                         <div class="field-group"><label for="speedInput">Speed (x)</label><input type="number" id="speedInput" min="0.01" max="5" step="0.0001" value="1"></div>
                     </div>
                     <div class="controls">
+                        <button id="circleBtn" aria-pressed="true">⭕ Circles</button>
+                        <button id="radiusBtn" aria-pressed="true">📏 Radii</button>
                         <button id="fitBtn" class="success">🎨 Fit</button>
                         <button id="clearBtn" class="danger">🗑️ Clear</button>
                         <button id="pauseBtn">⏸️ Pause</button>
@@ -124,6 +128,8 @@
         const clearBtn = document.getElementById('clearBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const resetViewBtn = document.getElementById('resetViewBtn');
+        const circleBtn = document.getElementById('circleBtn');
+        const radiusBtn = document.getElementById('radiusBtn');
         const smoothInput = document.getElementById('smoothInput');
         const harmonicInput = document.getElementById('harmonicInput');
         const speedInput = document.getElementById('speedInput');
@@ -138,6 +144,7 @@
         let fitCenter = { x: 0, y: 0 };
         let smoothness = 3, harmonics = 5, speed = 1, fitSamples = BASE_SAMPLES;
         let animationId = null, paused = false;
+        let showCircles = true, showRadii = true;
         let viewX = 0, viewY = 0, viewScale = 1;
         let isDrawing = false, lastPt = null;
 
@@ -304,8 +311,12 @@
                 const nx = px + amp * Math.cos(angle), ny = py + amp * Math.sin(angle);
                 const alpha = Math.max(0.16, 0.55 - i * 0.006);
                 ctx.strokeStyle = `rgba(245,158,11,${alpha})`; ctx.lineWidth = 1/s;
-                ctx.beginPath(); ctx.arc(ox + px*s, oy + py*s, amp*s, 0, 2*Math.PI); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(ox + px*s, oy + py*s); ctx.lineTo(ox + nx*s, oy + ny*s); ctx.stroke();
+                if (showCircles) {
+                    ctx.beginPath(); ctx.arc(ox + px*s, oy + py*s, amp*s, 0, 2*Math.PI); ctx.stroke();
+                }
+                if (showRadii) {
+                    ctx.beginPath(); ctx.moveTo(ox + px*s, oy + py*s); ctx.lineTo(ox + nx*s, oy + ny*s); ctx.stroke();
+                }
                 px = nx; py = ny;
             }
             return { x: ox + px*s, y: oy + py*s };
@@ -391,6 +402,12 @@
             paused = !paused; pauseBtn.textContent = paused ? '▶️ Resume' : '⏸️ Pause';
         });
         resetViewBtn.addEventListener('click', () => { autoFitView(); });
+        circleBtn.addEventListener('click', () => {
+            showCircles = !showCircles; circleBtn.setAttribute('aria-pressed', String(showCircles)); draw();
+        });
+        radiusBtn.addEventListener('click', () => {
+            showRadii = !showRadii; radiusBtn.setAttribute('aria-pressed', String(showRadii)); draw();
+        });
 
         const presets = {
             heart: t => ({ x: 80*Math.sin(t)**3, y: -(65*Math.cos(t)-25*Math.cos(2*t)-10*Math.cos(3*t)-5*Math.cos(4*t)) }),
