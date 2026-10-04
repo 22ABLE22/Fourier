@@ -7,7 +7,8 @@ A visualization tool for closed curve fitting based on Fourier series.
 - Draw closed curves freely with the left mouse button or touch
 - Middle mouse button drag to pan and mouse wheel to zoom
 - Fourier series epicycle animation visualization
-- Adjustable harmonic count with real-time fitting preview
+- Adjustable harmonic count up to 32,768 with real-time fitting preview
+- Arc-length resampling keeps fitting stable regardless of drawing speed
 - Built-in presets (heart, star, butterfly, etc.)
 - Zoom and speed control
 - Responsive design with touch support
@@ -24,7 +25,8 @@ Open the live demo: [Fourier Series Closed Curve Fitting](https://22able22.githu
 ## Technical Details
 
 - Pure HTML5 + CSS3 + JavaScript, no dependencies
-- FFT-based spectrum calculation with dynamically sized samples
+- FFT-based spectrum calculation with dynamically sized and bounded samples
+- High-DPI canvas rendering and adaptive animation detail for large harmonic counts
 - Canvas 2D rendering for animation
 - Left-button drawing, middle-button panning, wheel zoom, and touch input
 
