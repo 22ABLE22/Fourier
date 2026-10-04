@@ -24,6 +24,7 @@
         .stage-head h2 { margin-bottom:0; }
         .canvas-wrap { position:relative; flex:1 1 auto; min-height:0; }
         .canvas-wrap canvas { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:block; max-width:100%; max-height:100%; background:#fff; border-radius:10px; box-shadow:inset 0 0 0 1px var(--line-soft); cursor:crosshair; }
+        .canvas-wrap canvas.panning { cursor:grabbing; }
         .drawing-hint { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100%; padding:0 14px; text-align:center; font-size:0.82rem; line-height:1.55; color:#b3bdcc; pointer-events:none; }
         .stage-hint { font-size:0.92rem; }
         .controls { flex:0 0 auto; display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
@@ -139,7 +140,7 @@
         const toast = document.getElementById('toast');
 
         const cw = c => c.width, ch = c => c.height;
-        const BASE_SAMPLES = 256, MAX_SAMPLES = 1024;
+        const BASE_SAMPLES = 256, MIN_VIEW_SCALE = 0.02, MAX_VIEW_SCALE = 100;
         let rawPoints = [], fourier = [], path = [], time = 0;
         let fitCenter = { x: 0, y: 0 };
         let smoothness = 3, harmonics = 5, speed = 1, fitSamples = BASE_SAMPLES;
@@ -147,6 +148,7 @@
         let showCircles = true, showRadii = true;
         let viewX = 0, viewY = 0, viewScale = 1;
         let isDrawing = false, lastPt = null;
+        let isPanning = false, panStart = null;
 
         function showToast(msg, isError = false) {
             toast.textContent = msg; toast.className = 'toast show' + (isError ? ' error' : '');
@@ -170,32 +172,117 @@
             return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sy };
         }
 
-        fourierCanvas.addEventListener('mousedown', e => { stopAnimation(); rawPoints = []; isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); stageHint.style.display = 'none'; });
-        fourierCanvas.addEventListener('mousemove', e => { if (!isDrawing || !lastPt) return; const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt; });
-        fourierCanvas.addEventListener('mouseup', () => { isDrawing = false; lastPt = null; rawPoints.push(rawPoints[0]); redrawDrawing(); });
-        fourierCanvas.addEventListener('mouseleave', () => { if (isDrawing) { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } } });
+        function finishDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false; lastPt = null;
+            if (rawPoints.length > 1) {
+                const first = rawPoints[0], last = rawPoints[rawPoints.length - 1];
+                if (last.x !== first.x || last.y !== first.y) rawPoints.push({ x: first.x, y: first.y });
+                redrawDrawing();
+            }
+        }
+
+        function endPan() {
+            if (!isPanning) return;
+            isPanning = false; panStart = null;
+            fourierCanvas.classList.remove('panning');
+        }
+
+        fourierCanvas.addEventListener('mousedown', e => {
+            if (e.button === 1) {
+                e.preventDefault();
+                const rect = fourierCanvas.getBoundingClientRect();
+                isPanning = true;
+                panStart = { x: e.clientX, y: e.clientY, viewX, viewY, sx: cw(fourierCanvas) / rect.width, sy: ch(fourierCanvas) / rect.height };
+                fourierCanvas.classList.add('panning');
+                return;
+            }
+            if (e.button !== 0) return;
+            e.preventDefault();
+            stopAnimation(); rawPoints = []; isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); stageHint.style.display = 'none';
+        });
+        fourierCanvas.addEventListener('mousemove', e => {
+            if (isPanning || !isDrawing || !lastPt || (e.buttons & 1) !== 1) return;
+            const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt;
+        });
+        fourierCanvas.addEventListener('mouseleave', finishDrawing);
+        fourierCanvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
+        window.addEventListener('mousemove', e => {
+            if (!isPanning || !panStart) return;
+            e.preventDefault();
+            viewX = panStart.viewX + (e.clientX - panStart.x) * panStart.sx;
+            viewY = panStart.viewY + (e.clientY - panStart.y) * panStart.sy;
+            draw();
+        });
+        window.addEventListener('mouseup', e => {
+            if (e.button === 1) endPan();
+            if (e.button === 0) finishDrawing();
+        });
+        window.addEventListener('blur', () => { endPan(); finishDrawing(); });
+        fourierCanvas.addEventListener('wheel', e => {
+            e.preventDefault();
+            const rect = fourierCanvas.getBoundingClientRect();
+            const mx = (e.clientX - rect.left) * cw(fourierCanvas) / rect.width;
+            const my = (e.clientY - rect.top) * ch(fourierCanvas) / rect.height;
+            const wx = (mx - cw(fourierCanvas) / 2 - viewX) / viewScale;
+            const wy = (my - ch(fourierCanvas) / 2 - viewY) / viewScale;
+            const nextScale = Math.min(MAX_VIEW_SCALE, Math.max(MIN_VIEW_SCALE, viewScale * Math.exp(-e.deltaY * 0.001)));
+            if (nextScale === viewScale) return;
+            viewX = mx - cw(fourierCanvas) / 2 - wx * nextScale;
+            viewY = my - ch(fourierCanvas) / 2 - wy * nextScale;
+            viewScale = nextScale;
+            draw();
+        }, { passive: false });
         fourierCanvas.addEventListener('touchstart', e => { e.preventDefault(); stopAnimation(); rawPoints = []; isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); stageHint.style.display = 'none'; }, { passive: false });
         fourierCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!isDrawing || !lastPt) return; const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt; }, { passive: false });
-        fourierCanvas.addEventListener('touchend', () => { isDrawing = false; lastPt = null; if (rawPoints.length > 1) { rawPoints.push(rawPoints[0]); redrawDrawing(); } });
+        fourierCanvas.addEventListener('touchend', finishDrawing);
+
+        function fft(re, im) {
+            const n = re.length;
+            for (let i = 1, j = 0; i < n; i++) {
+                let bit = n >> 1;
+                for (; j & bit; bit >>= 1) j ^= bit;
+                j ^= bit;
+                if (i < j) {
+                    [re[i], re[j]] = [re[j], re[i]];
+                    [im[i], im[j]] = [im[j], im[i]];
+                }
+            }
+            for (let len = 2; len <= n; len *= 2) {
+                const angle = -2 * Math.PI / len;
+                const wLenRe = Math.cos(angle), wLenIm = Math.sin(angle);
+                for (let start = 0; start < n; start += len) {
+                    let wRe = 1, wIm = 0;
+                    for (let j = 0; j < len / 2; j++) {
+                        const even = start + j, odd = even + len / 2;
+                        const oddRe = re[odd] * wRe - im[odd] * wIm;
+                        const oddIm = re[odd] * wIm + im[odd] * wRe;
+                        re[odd] = re[even] - oddRe; im[odd] = im[even] - oddIm;
+                        re[even] += oddRe; im[even] += oddIm;
+                        const nextRe = wRe * wLenRe - wIm * wLenIm;
+                        wIm = wRe * wLenIm + wIm * wLenRe; wRe = nextRe;
+                    }
+                }
+            }
+        }
 
         function dft(pts) {
             const N = pts.length;
             let mx = 0, my = 0;
             for (const p of pts) { mx += p.x; my += p.y; }
             mx /= N; my /= N;
+            const re = new Float64Array(N), im = new Float64Array(N);
+            for (let n = 0; n < N; n++) { re[n] = pts[n].x - mx; im[n] = pts[n].y - my; }
+            fft(re, im);
+
             const halfN = Math.floor(N / 2);
-            const freqOrder = [0];
-            for (let i = 1; i <= halfN; i++) { freqOrder.push(i); if (i !== N - i) freqOrder.push(-i); }
-            const coeffs = [];
-            for (const k of freqOrder) {
-                let re = 0, im = 0;
-                for (let n = 0; n < N; n++) {
-                    const theta = 2*Math.PI*k*n/N, px = pts[n].x - mx, py = pts[n].y - my;
-                    re += px*Math.cos(theta) + py*Math.sin(theta);
-                    im += py*Math.cos(theta) - px*Math.sin(theta);
+            const coeffs = [{ amp: Math.hypot(re[0], im[0]) / N, phase: Math.atan2(im[0], re[0]), freq: 0 }];
+            for (let i = 1; i <= halfN; i++) {
+                coeffs.push({ amp: Math.hypot(re[i], im[i]) / N, phase: Math.atan2(im[i], re[i]), freq: i });
+                if (i !== N - i) {
+                    const neg = N - i;
+                    coeffs.push({ amp: Math.hypot(re[neg], im[neg]) / N, phase: Math.atan2(im[neg], re[neg]), freq: -i });
                 }
-                re /= N; im /= N;
-                coeffs.push({ amp: Math.hypot(re, im), phase: Math.atan2(im, re), freq: k });
             }
             coeffs.sort((a, b) => b.amp - a.amp);
             return coeffs;
@@ -211,7 +298,11 @@
         function smoothen(pts, k) {
             if (pts.length < 2 || k <= 1) return pts;
             const res = pts.slice();
-            for (let pass = 0; pass < k; pass++) { const tmp = res.slice(); for (let i = 0; i < res.length; i++) { const p0 = res[(i-1+res.length)%res.length], p1 = res[i], p2 = res[(i+1)%res.length]; tmp[i] = { x: (p0.x+4*p1.x+p2.x)/6, y: (p0.y+4*p1.y+p2.y)/6 }; } res.length = 0; res.push(...tmp); }
+            for (let pass = 0; pass < k; pass++) {
+                const tmp = new Array(res.length);
+                for (let i = 0; i < res.length; i++) { const p0 = res[(i-1+res.length)%res.length], p1 = res[i], p2 = res[(i+1)%res.length]; tmp[i] = { x: (p0.x+4*p1.x+p2.x)/6, y: (p0.y+4*p1.y+p2.y)/6 }; }
+                for (let i = 0; i < res.length; i++) res[i] = tmp[i];
+            }
             return res;
         }
 
@@ -248,7 +339,12 @@
             path = []; time = 0; animate();
         }
 
-        function requiredSamples() { return Math.min(MAX_SAMPLES, Math.max(BASE_SAMPLES, 2 * harmonics)); }
+        function requiredSamples() {
+            let samples = BASE_SAMPLES;
+            const target = Math.max(BASE_SAMPLES, 2 * harmonics);
+            while (samples < target) samples *= 2;
+            return samples;
+        }
 
         function computeFit() {
             fitSamples = requiredSamples();
@@ -260,6 +356,7 @@
             infoSamples.textContent = fitSamples;
             infoError.textContent = (computeError()*100).toFixed(1)+'%';
             autoFitView();
+            draw();
         }
 
         function refitLive() {
@@ -350,8 +447,7 @@
         function refitOnResize() {
             if (sizeFourierCanvas()) {
                 if (fourier.length === 0) { redrawDrawing(); return; }
-                autoFitView();
-                draw();
+                autoFitView(); draw();
             }
         }
 
@@ -385,7 +481,7 @@
                 computeFit();
             } else {
                 infoError.textContent = fourier.length > 0 ? (computeError()*100).toFixed(1)+'%' : '-';
-                autoFitView();
+                autoFitView(); draw();
             }
             if (animationId) { path = []; time = 0; }
         });
@@ -401,7 +497,7 @@
             if (!animationId) return;
             paused = !paused; pauseBtn.textContent = paused ? '▶️ Resume' : '⏸️ Pause';
         });
-        resetViewBtn.addEventListener('click', () => { autoFitView(); });
+        resetViewBtn.addEventListener('click', () => { autoFitView(); draw(); });
         circleBtn.addEventListener('click', () => {
             showCircles = !showCircles; circleBtn.setAttribute('aria-pressed', String(showCircles)); draw();
         });
