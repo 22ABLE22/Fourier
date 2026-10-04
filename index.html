@@ -85,7 +85,7 @@
                     <h2>🎛️ Controls</h2>
                     <div class="field-grid">
                         <div class="field-group"><label for="smoothInput">Smoothness (1-10)</label><input type="number" id="smoothInput" min="1" max="10" step="1" value="3"></div>
-                        <div class="field-group"><label for="harmonicInput">Harmonics (>=1)</label><input type="number" id="harmonicInput" min="1" step="1" value="5"></div>
+                        <div class="field-group"><label for="harmonicInput">Harmonics (1-32768)</label><input type="number" id="harmonicInput" min="1" max="32768" step="1" value="5"></div>
                         <div class="field-group"><label for="speedInput">Speed (x)</label><input type="number" id="speedInput" min="0.01" max="5" step="0.0001" value="1"></div>
                     </div>
                     <div class="controls">
@@ -99,7 +99,7 @@
                 </div>
                 <div class="info-bar">
                     <div class="info-cell"><div class="label" title="Number of curve samples fed into the Fourier transform">Samples</div><div id="infoSamples" class="value">0</div></div>
-                    <div class="info-cell"><div class="label">Error</div><div id="infoError" class="value">-</div></div>
+                    <div class="info-cell"><div class="label" title="Remaining spectral energy after the selected harmonics">Error</div><div id="infoError" class="value">-</div></div>
                 </div>
             </aside>
             <section class="panel stage">
@@ -140,7 +140,8 @@
         const toast = document.getElementById('toast');
 
         const cw = c => c.width, ch = c => c.height;
-        const BASE_SAMPLES = 256, MIN_VIEW_SCALE = 0.02, MAX_VIEW_SCALE = 100;
+        const BASE_SAMPLES = 256, MAX_SAFE_SAMPLES = 1 << 16, MAX_HARMONICS = MAX_SAFE_SAMPLES / 2;
+        const MAX_VISIBLE_EPICYCLES = 160, MIN_VIEW_SCALE = 0.02, MAX_VIEW_SCALE = 100;
         let rawPoints = [], fourier = [], path = [], time = 0;
         let fitCenter = { x: 0, y: 0 };
         let smoothness = 3, harmonics = 5, speed = 1, fitSamples = BASE_SAMPLES;
@@ -149,6 +150,7 @@
         let viewX = 0, viewY = 0, viewScale = 1;
         let isDrawing = false, lastPt = null;
         let isPanning = false, panStart = null;
+        let canvasDpr = 1, harmonicTimer = null, harmonicWarningAt = 0;
 
         function showToast(msg, isError = false) {
             toast.textContent = msg; toast.className = 'toast show' + (isError ? ' error' : '');
@@ -158,7 +160,7 @@
         function redrawDrawing() {
             fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
             if (rawPoints.length < 2) return;
-            fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.lineCap = 'round'; fourierCtx.lineJoin = 'round';
+            fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2 * canvasDpr; fourierCtx.lineCap = 'round'; fourierCtx.lineJoin = 'round';
             fourierCtx.beginPath(); fourierCtx.moveTo(rawPoints[0].x, rawPoints[0].y);
             for (let i = 1; i < rawPoints.length; i++) fourierCtx.lineTo(rawPoints[i].x, rawPoints[i].y);
             fourierCtx.stroke();
@@ -203,7 +205,7 @@
         });
         fourierCanvas.addEventListener('mousemove', e => {
             if (isPanning || !isDrawing || !lastPt || (e.buttons & 1) !== 1) return;
-            const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt;
+            const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2 * canvasDpr; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt;
         });
         fourierCanvas.addEventListener('mouseleave', finishDrawing);
         fourierCanvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
@@ -219,6 +221,7 @@
             if (e.button === 0) finishDrawing();
         });
         window.addEventListener('blur', () => { endPan(); finishDrawing(); });
+        window.addEventListener('mouseout', e => { if (!e.relatedTarget) endPan(); });
         fourierCanvas.addEventListener('wheel', e => {
             e.preventDefault();
             const rect = fourierCanvas.getBoundingClientRect();
@@ -234,8 +237,9 @@
             draw();
         }, { passive: false });
         fourierCanvas.addEventListener('touchstart', e => { e.preventDefault(); stopAnimation(); rawPoints = []; isDrawing = true; lastPt = getEventPos(e); rawPoints.push(lastPt); stageHint.style.display = 'none'; }, { passive: false });
-        fourierCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!isDrawing || !lastPt) return; const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt; }, { passive: false });
+        fourierCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!isDrawing || !lastPt) return; const pt = getEventPos(e); fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2 * canvasDpr; fourierCtx.beginPath(); fourierCtx.moveTo(lastPt.x, lastPt.y); fourierCtx.lineTo(pt.x, pt.y); fourierCtx.stroke(); rawPoints.push(pt); lastPt = pt; }, { passive: false });
         fourierCanvas.addEventListener('touchend', finishDrawing);
+        fourierCanvas.addEventListener('touchcancel', finishDrawing);
 
         function fft(re, im) {
             const n = re.length;
@@ -290,8 +294,24 @@
 
         function resample(pts, n) {
             if (pts.length < 2) return pts;
-            const res = [], len = pts.length;
-            for (let i = 0; i < n; i++) { const t = i / n * len; const idx = Math.floor(t); const frac = t - idx; const p0 = pts[idx % len], p1 = pts[(idx + 1) % len]; res.push({ x: p0.x + frac*(p1.x-p0.x), y: p0.y + frac*(p1.y-p0.y) }); }
+            const len = pts.length, cumulative = new Float64Array(len + 1);
+            for (let i = 0; i < len; i++) {
+                const p0 = pts[i], p1 = pts[(i + 1) % len];
+                cumulative[i + 1] = cumulative[i] + Math.hypot(p1.x - p0.x, p1.y - p0.y);
+            }
+            const totalLength = cumulative[len];
+            if (totalLength < 1e-9) return Array.from({ length: n }, () => ({ x: pts[0].x, y: pts[0].y }));
+
+            const res = [], targetStep = totalLength / n;
+            let segment = 0;
+            for (let i = 0; i < n; i++) {
+                const target = i * targetStep;
+                while (segment < len - 1 && cumulative[segment + 1] < target) segment++;
+                const segmentLength = cumulative[segment + 1] - cumulative[segment];
+                const frac = segmentLength > 1e-12 ? (target - cumulative[segment]) / segmentLength : 0;
+                const p0 = pts[segment], p1 = pts[(segment + 1) % len];
+                res.push({ x: p0.x + frac*(p1.x-p0.x), y: p0.y + frac*(p1.y-p0.y) });
+            }
             return res;
         }
 
@@ -310,7 +330,7 @@
             const fw = cw(fourierCanvas), fh = ch(fourierCanvas);
             if (fourier.length === 0) { viewX = 0; viewY = 0; viewScale = 1; return; }
             const limit = Math.max(1, Math.min(harmonics, fourier.length));
-            const steps = 360;
+            const steps = limit > 1000 ? 180 : 360;
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (let i = 0; i < steps; i++) {
                 const t = i / steps;
@@ -331,6 +351,7 @@
         }
 
         function startFit() {
+            clearTimeout(harmonicTimer);
             if (rawPoints.length < 10) { showToast('Draw more points first!', true); return; }
             sizeFourierCanvas();
             computeFit();
@@ -341,7 +362,7 @@
 
         function requiredSamples() {
             let samples = BASE_SAMPLES;
-            const target = Math.max(BASE_SAMPLES, 2 * harmonics);
+            const target = Math.min(MAX_SAFE_SAMPLES, Math.max(BASE_SAMPLES, 2 * harmonics));
             while (samples < target) samples *= 2;
             return samples;
         }
@@ -368,7 +389,8 @@
         function animate() {
             if (paused) { animationId = requestAnimationFrame(animate); return; }
             const dt = 0.002 * speed; time = (time + dt) % 1; path = [];
-            const steps = 240, limit = Math.min(harmonics, fourier.length);
+            const limit = Math.min(harmonics, fourier.length);
+            const steps = limit > 1000 ? 120 : 240;
             for (let i = 0; i < steps; i++) {
                 const t = ((time - i/steps) % 1 + 1) % 1;
                 let px = 0, py = 0;
@@ -383,31 +405,31 @@
             fourierCtx.clearRect(0, 0, fw, fh);
             fourierCtx.lineJoin = 'round'; fourierCtx.lineCap = 'round';
             if (rawPoints.length > 1) {
-                fourierCtx.strokeStyle = 'rgba(37,99,235,0.35)'; fourierCtx.lineWidth = 1.6/viewScale;
+                fourierCtx.strokeStyle = 'rgba(37,99,235,0.35)'; fourierCtx.lineWidth = 1.6 * canvasDpr;
                 fourierCtx.beginPath(); fourierCtx.moveTo(cx + (rawPoints[0].x - fitCenter.x)*viewScale, cy + (rawPoints[0].y - fitCenter.y)*viewScale);
                 for (let i = 1; i < rawPoints.length; i++) fourierCtx.lineTo(cx + (rawPoints[i].x - fitCenter.x)*viewScale, cy + (rawPoints[i].y - fitCenter.y)*viewScale);
                 fourierCtx.stroke();
             }
-            fourierCtx.strokeStyle = '#ef4444'; fourierCtx.lineWidth = 2.2/viewScale;
+            fourierCtx.strokeStyle = '#ef4444'; fourierCtx.lineWidth = 2.2 * canvasDpr;
             if (path.length > 1) { fourierCtx.beginPath(); fourierCtx.moveTo(cx+path[0].x*viewScale, cy+path[0].y*viewScale); for (let i = 1; i < path.length; i++) fourierCtx.lineTo(cx+path[i].x*viewScale, cy+path[i].y*viewScale); fourierCtx.stroke(); }
             if (fourier.length > 0 && path.length > 0) {
-                const ep = drawEpicycles(fourierCtx, cx, cy, time, harmonics, viewScale);
-                fourierCtx.shadowColor = 'rgba(124,58,237,0.35)'; fourierCtx.shadowBlur = 8;
+                drawEpicycles(fourierCtx, cx, cy, time, harmonics, viewScale);
+                fourierCtx.shadowColor = 'rgba(124,58,237,0.35)'; fourierCtx.shadowBlur = 8 * canvasDpr;
                 fourierCtx.fillStyle = '#7c3aed';
-                fourierCtx.beginPath(); fourierCtx.arc(ep.x, ep.y, 3.4, 0, 2*Math.PI); fourierCtx.fill();
+                fourierCtx.beginPath(); fourierCtx.arc(cx + path[0].x * viewScale, cy + path[0].y * viewScale, 3.4 * canvasDpr, 0, 2*Math.PI); fourierCtx.fill();
                 fourierCtx.shadowBlur = 0;
             }
         }
 
         function drawEpicycles(ctx, ox, oy, t, n, s) {
             let px = 0, py = 0;
-            const limit = Math.min(n, fourier.length);
+            const limit = Math.min(n, fourier.length, MAX_VISIBLE_EPICYCLES);
             for (let i = 0; i < limit; i++) {
                 const { freq, amp, phase } = fourier[i];
                 const angle = freq * 2*Math.PI * t + phase;
                 const nx = px + amp * Math.cos(angle), ny = py + amp * Math.sin(angle);
                 const alpha = Math.max(0.16, 0.55 - i * 0.006);
-                ctx.strokeStyle = `rgba(245,158,11,${alpha})`; ctx.lineWidth = 1/s;
+                ctx.strokeStyle = `rgba(245,158,11,${alpha})`; ctx.lineWidth = canvasDpr;
                 if (showCircles) {
                     ctx.beginPath(); ctx.arc(ox + px*s, oy + py*s, amp*s, 0, 2*Math.PI); ctx.stroke();
                 }
@@ -437,10 +459,27 @@
 
         function sizeFourierCanvas() {
             const wrap = fourierCanvas.parentElement;
-            const w = Math.max(160, Math.round(wrap.clientWidth));
-            const h = Math.max(160, Math.round(wrap.clientHeight));
-            if (cw(fourierCanvas) === w && ch(fourierCanvas) === h) return false;
+            const cssW = Math.max(160, Math.round(wrap.clientWidth));
+            const cssH = Math.max(160, Math.round(wrap.clientHeight));
+            const dpr = Math.min(2, window.devicePixelRatio || 1);
+            const w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
+            if (cw(fourierCanvas) === w && ch(fourierCanvas) === h && canvasDpr === dpr) return false;
+
+            const oldW = cw(fourierCanvas), oldH = ch(fourierCanvas);
+            if (oldW > 0 && oldH > 0 && (rawPoints.length > 0 || fourier.length > 0 || path.length > 0)) {
+                const scale = Math.min(w / oldW, h / oldH);
+                const dx = (w - oldW * scale) / 2, dy = (h - oldH * scale) / 2;
+                rawPoints = rawPoints.map(p => ({ x: p.x * scale + dx, y: p.y * scale + dy }));
+                if (lastPt) lastPt = { x: lastPt.x * scale + dx, y: lastPt.y * scale + dy };
+                fitCenter = { x: fitCenter.x * scale + dx, y: fitCenter.y * scale + dy };
+                fourier = fourier.map(c => ({ ...c, amp: c.amp * scale }));
+                path = path.map(p => ({ x: p.x * scale, y: p.y * scale }));
+            }
+
+            canvasDpr = dpr;
             fourierCanvas.width = w; fourierCanvas.height = h;
+            fourierCanvas.style.width = cssW + 'px';
+            fourierCanvas.style.height = cssH + 'px';
             return true;
         }
 
@@ -457,6 +496,7 @@
         if (window.ResizeObserver) new ResizeObserver(scheduleResize).observe(fourierCanvas.parentElement);
 
         clearBtn.addEventListener('click', () => {
+            clearTimeout(harmonicTimer);
             stopAnimation(); rawPoints = []; fourier = []; path = []; time = 0;
             fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
             stageHint.style.display = '';
@@ -473,19 +513,37 @@
             refitLive();
         });
         smoothInput.addEventListener('change', () => { smoothInput.value = smoothness; });
-        harmonicInput.addEventListener('input', () => {
-            const v = parseInt(harmonicInput.value, 10);
-            if (!isFinite(v)) return;
-            harmonics = Math.max(1, v);
-            if (rawPoints.length >= 10 && requiredSamples() > fitSamples) {
-                computeFit();
-            } else {
-                infoError.textContent = fourier.length > 0 ? (computeError()*100).toFixed(1)+'%' : '-';
-                autoFitView(); draw();
+        function applyHarmonics(value, immediate = false) {
+            const requested = Math.max(1, Math.floor(value));
+            harmonics = Math.min(MAX_HARMONICS, requested);
+            if (requested > MAX_HARMONICS && Date.now() - harmonicWarningAt > 1500) {
+                harmonicWarningAt = Date.now();
+                showToast(`Harmonics limited to ${MAX_HARMONICS}`, true);
             }
             if (animationId) { path = []; time = 0; }
+
+            const update = () => {
+                if (rawPoints.length >= 10 && requiredSamples() > fitSamples) {
+                    computeFit();
+                } else {
+                    infoError.textContent = fourier.length > 0 ? (computeError()*100).toFixed(1)+'%' : '-';
+                    autoFitView(); draw();
+                }
+            };
+
+            clearTimeout(harmonicTimer);
+            if (immediate) update(); else harmonicTimer = setTimeout(update, 180);
+        }
+
+        harmonicInput.addEventListener('input', () => {
+            const v = parseInt(harmonicInput.value, 10);
+            if (isFinite(v)) applyHarmonics(v);
         });
-        harmonicInput.addEventListener('change', () => { harmonicInput.value = harmonics; });
+        harmonicInput.addEventListener('change', () => {
+            const v = parseInt(harmonicInput.value, 10);
+            applyHarmonics(isFinite(v) ? v : harmonics, true);
+            harmonicInput.value = harmonics;
+        });
         speedInput.addEventListener('input', () => {
             const v = parseFloat(speedInput.value);
             if (!isFinite(v)) return;
