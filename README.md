@@ -14,7 +14,12 @@ A visualization tool for closed curve fitting based on Fourier series.
 
 ## Usage
 
-Open index.html directly in your browser.
+Open the live demo: [Fourier Series Closed Curve Fitting](https://22able22.github.io/Fourier/)
+
+- Left mouse button or touch: draw a closed curve
+- Middle mouse button drag: pan the Fourier view
+- Mouse wheel: zoom around the pointer
+- Preset button: load a sample curve and fit it automatically
 
 ## Technical Details
 
