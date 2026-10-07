@@ -1,11 +1,11 @@
-// 输入:画布 Pointer Events(鼠标/笔/触摸:绘制、平移、双指缩放)、取点、结束绘制与结束平移
+// Pointer Events input: drawing, panning, pinch zooming, sampling, and gesture cleanup.
 fourierCanvas.style.touchAction = 'none';
 
 let inputDrawId = null, inputPanId = null;
 const inputTouches = new Map();
 let inputPinch = null;
 
-// 客户端坐标→画布像素坐标(rect 尺寸为 0 时比例退化为 1,避免除零)
+// Convert client coordinates to canvas pixels, with a safe fallback for zero-size rects.
 function clientToCanvas(cx, cy) {
     const rect = fourierCanvas.getBoundingClientRect();
     const sx = rect.width > 0 ? cw(fourierCanvas) / rect.width : 1;
@@ -13,7 +13,7 @@ function clientToCanvas(cx, cy) {
     return { x: (cx - rect.left) * sx, y: (cy - rect.top) * sy };
 }
 
-// 事件坐标→原始笔迹坐标(先转屏幕像素,再转世界坐标,最后加上拟合中心)
+// Convert event coordinates to raw stroke coordinates through screen/world space.
 function getEventPos(e) {
     const s = clientToCanvas(e.clientX, e.clientY);
     const w = screenToWorld(s);
@@ -37,24 +37,24 @@ function endPan() {
 }
 
 fourierCanvas.addEventListener('pointerdown', e => {
-    try { fourierCanvas.setPointerCapture(e.pointerId); } catch (err) { /* 捕获失败忽略 */ }
+    try { fourierCanvas.setPointerCapture(e.pointerId); } catch (err) { /* Ignore capture failures. */ }
     const isTouch = e.pointerType === 'touch';
     if (isTouch) {
         inputTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (inputTouches.size === 2) {
-            // 双指:先结束正在进行的绘制,再进入缩放
+            // Two fingers: finish drawing before entering pinch zoom.
             if (inputDrawId !== null && S.isDrawing) finishDrawing();
             const ids = [...inputTouches.keys()];
             const a = inputTouches.get(ids[0]), b = inputTouches.get(ids[1]);
             const dist = Math.hypot(a.x - b.x, a.y - b.y);
             const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
             inputPinch = { ids, dist, lastDist: dist, w: screenToWorld(clientToCanvas(midX, midY)), scale0: S.viewScale };
-            inputDrawId = null;  // 余指不续画
+            inputDrawId = null;  // Do not resume drawing with the remaining finger.
             return;
         }
-        // 单指触摸 → 绘制(button 视为 0)
+        // Single-finger touch draws (button is treated as 0).
         e.preventDefault();
-        stopAnimation(); S.rawPoints = []; S.isDrawing = true; S.lastPt = getEventPos(e); S.rawPoints.push(S.lastPt);
+        stopAnimation(); S.rawPoints = []; S.muted = []; S.isDrawing = true; S.lastPt = getEventPos(e); S.rawPoints.push(S.lastPt);
         stageHint.style.display = 'none';
         inputDrawId = e.pointerId;
         return;
@@ -70,14 +70,14 @@ fourierCanvas.addEventListener('pointerdown', e => {
     }
     if (e.button === 0) {
         e.preventDefault();
-        stopAnimation(); S.rawPoints = []; S.isDrawing = true; S.lastPt = getEventPos(e); S.rawPoints.push(S.lastPt);
+        stopAnimation(); S.rawPoints = []; S.muted = []; S.isDrawing = true; S.lastPt = getEventPos(e); S.rawPoints.push(S.lastPt);
         stageHint.style.display = 'none';
         inputDrawId = e.pointerId;
     }
 });
 
 function inputMove(e) {
-    // 双指缩放(积分式:逐 move 更新)
+    // Pinch zoom with incremental updates.
     if (inputPinch) {
         if (e.pointerType === 'touch' && inputPinch.ids.includes(e.pointerId) && inputTouches.has(e.pointerId)) {
             inputTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -97,7 +97,7 @@ function inputMove(e) {
         }
         return;
     }
-    // 平移(从 panStart 幂等重算)
+    // Pan by recomputing from panStart.
     if (inputPanId === e.pointerId && S.isPanning && S.panStart) {
         e.preventDefault();
         S.viewX = S.panStart.viewX + (e.clientX - S.panStart.x) * S.panStart.sx;
@@ -105,11 +105,11 @@ function inputMove(e) {
         draw();
         return;
     }
-    // 绘制(增量线段)
+    // Draw an incremental segment.
     if (inputDrawId === e.pointerId && S.isDrawing && S.lastPt) {
         if (e.pointerType === 'mouse' && (e.buttons & 1) !== 1) { finishDrawing(); return; }
         const pt = getEventPos(e);
-        if (pt.x === S.lastPt.x && pt.y === S.lastPt.y) return;  // 同一事件冒泡到 window 会二次执行:完全同点跳过,避免重复采样
+        if (pt.x === S.lastPt.x && pt.y === S.lastPt.y) return;  // The same event can bubble to window; skip identical points to avoid duplicate samples.
         const a = rawToScreen(S.lastPt), b = rawToScreen(pt);
         fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2 * S.canvasDpr;
         fourierCtx.lineCap = 'round'; fourierCtx.lineJoin = 'round';
@@ -120,7 +120,7 @@ function inputMove(e) {
 
 function inputEnd(e) {
     if (e.pointerType === 'touch') inputTouches.delete(e.pointerId);
-    if (inputPinch && inputTouches.size < 2) inputPinch = null;  // 余指不绘制(不恢复 inputDrawId)
+    if (inputPinch && inputTouches.size < 2) inputPinch = null;  // Do not resume drawing with the remaining finger.
     if (e.pointerId === inputDrawId) { inputDrawId = null; finishDrawing(); }
     if (e.pointerId === inputPanId) { inputPanId = null; endPan(); }
 }

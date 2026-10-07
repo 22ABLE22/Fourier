@@ -1,25 +1,25 @@
-// 频谱面板:谐波振幅条形图 + 悬停提示 + 点击静音 + Reset mutes
-// 契约消费:S.fourier(振幅降序 {amp,freq,phase})、S.harmonics、S.muted(下标对齐)、
-//           rebuildCurve() / computeError() / UI.updateInfo() / draw(),fit.js 每次拟合后调用 Spectrum.refresh()
-// 设计:
-//   x 轴 = 谐波序号(S.fourier 顺序),显示条数 K = min(fourier 长度, 画布宽度容量, 600)
-//   y 轴 = √(amp / maxAmp) 缩放(小谐波可见),悬停提示给出真实振幅/频率/相位
-//   配色 = 默认琥珀 #f59e0b(与旋轮线一致);静音 #d1d5db;i ≥ S.harmonics 半透明(不参与拟合),
-//          并在截断处画竖直虚线;面板为空时画居中提示
-//   DPR ≤ 2 设置物理尺寸,ResizeObserver 观察 .spectrum-wrap 自动重绘;重绘仅 O(K) 次 fillRect
+// Spectrum panel: harmonic bars, hover details, mute toggles, and mute reset.
+// Contract dependencies: sorted S.fourier coefficients, S.harmonics, and S.muted.
+// Consumers include rebuildCurve(), computeError(), UI.updateInfo(), and draw().
+// Design:
+//   x axis = harmonic index; K = min(coefficient count, width capacity, 600).
+//   y axis = sqrt(amp / maxAmp); hover shows raw amplitude, frequency, and phase
+//   colors use amber for active bars and gray for muted bars; bars beyond harmonics are translucent,
+//          with a dashed cutoff line and an empty-state note
+//   cap DPR at 2 and redraw on ResizeObserver changes; rendering is O(K)
 const Spectrum = (() => {
-    const COLOR_ON = '#f59e0b';       // 活跃条(与旋轮线同色)
-    const COLOR_MUTED = '#d1d5db';    // 静音条(浅灰)
-    const ALPHA_BEYOND = 0.3;         // i ≥ S.harmonics:半透明 = 当前不参与拟合
+    const COLOR_ON = '#f59e0b';       // active bar
+    const COLOR_MUTED = '#d1d5db';    // muted bar
+    const ALPHA_BEYOND = 0.3;         // i >= S.harmonics: translucent means excluded from fitting
     const PAD = { l: 6, r: 6, t: 11, b: 11 };
-    const MAX_BARS = 600;             // 显示条数上限(宽度不足时取宽度容量)
+    const MAX_BARS = 600;             // maximum visible bars
     const EMPTY_NOTE = 'Click a bar to mute/unmute that harmonic';
 
     let canvas = null, ctx = null, wrap = null, tip = null, note = null, resetBtn = null;
-    let geom = null;                  // 命中测试几何:{ padL, plotW, K, slot }
+    let geom = null;                  // hit-test geometry:{ padL, plotW, K, slot }
     let inited = false;
 
-    // ===== 工具 =====
+    // ===== Utilities =====
 
     function countMuted() {
         const len = S.fourier.length;
@@ -29,7 +29,7 @@ const Spectrum = (() => {
         return n;
     }
 
-    // 真实振幅格式化(悬停提示用):普通数取 2~4 位,极端值走科学计数
+    // Format amplitudes for hover details.
     function fmtAmp(a) {
         if (!isFinite(a)) return String(a);
         const abs = Math.abs(a);
@@ -52,9 +52,9 @@ const Spectrum = (() => {
         note.title = 'Bars use a √(amplitude) scale so small harmonics stay visible; hover shows raw values';
     }
 
-    // ===== 状态变更(静音切换 / 重置后的统一刷新链) =====
+    // ===== State changes (mute toggles and reset refresh chain) =====
 
-    // S.muted 可能是稀疏/过短数组:先规整到与 S.fourier 等长的布尔数组
+    // Normalize sparse or short mute arrays to the Fourier coefficient length.
     function syncMuted() {
         const n = S.fourier.length;
         const cur = Array.isArray(S.muted) ? S.muted : [];
@@ -65,13 +65,14 @@ const Spectrum = (() => {
     }
 
     function applyState() {
-        if (typeof rebuildCurve === 'function') rebuildCurve();               // 依据 S.harmonics/S.muted 重建采样表
-        if (typeof UI !== 'undefined' && UI && UI.updateInfo) UI.updateInfo(); // 刷新 Samples/Error 信息栏
-        refresh();                                                            // 重绘频谱面板(颜色/提示行)
-        if (typeof draw === 'function') draw();                               // 主画布重绘
+        if (typeof rebuildCurve === 'function') rebuildCurve();               // rebuild the curve table from S.harmonics/S.muted
+        if (typeof rebuildTrail === 'function') rebuildTrail();               // refresh the trail so a paused animation stays consistent
+        if (typeof UI !== 'undefined' && UI && UI.updateInfo) UI.updateInfo(); // refresh the Samples/Error info bar
+        refresh();                                                            // repaint the spectrum panel (colors/notes)
+        if (typeof draw === 'function') draw();                               // repaint the main canvas
     }
 
-    // 点击某条 → 切换 S.muted[i];S.fourier 为空时无效。返回是否生效
+    // Click a bar to toggle S.muted[i]; no-op when the spectrum is empty.
     function toggleMute(i) {
         if (S.fourier.length === 0 || i < 0 || i >= S.fourier.length) return false;
         syncMuted();
@@ -80,23 +81,23 @@ const Spectrum = (() => {
         return true;
     }
 
-    // Reset mutes:整体替换 S.muted 并刷新
+    // Reset all mute flags and refresh.
     function resetMutes() {
         S.muted = new Array(S.fourier.length).fill(false);
         applyState();
     }
 
-    // ===== 绘制 =====
+    // ===== Rendering =====
 
     function drawPanel() {
         const rect = wrap.getBoundingClientRect();
         const W = Math.round(rect.width), H = Math.round(rect.height);
-        if (W < 8 || H < 8) return false;                       // 尺寸未知时不绘制(等待 ResizeObserver)
+        if (W < 8 || H < 8) return false;                       // Skip drawing until the size is known.
 
-        const dpr = Math.min(2, window.devicePixelRatio || 1);  // DPR 上限 2
+        const dpr = Math.min(2, window.devicePixelRatio || 1);  // DPR is capped at 2.
         const pw = Math.max(1, Math.round(W * dpr)), ph = Math.max(1, Math.round(H * dpr));
         if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);                 // 之后统一按 CSS 像素绘制
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);                 // Draw in CSS pixels from here.
         ctx.clearRect(0, 0, W, H);
         ctx.textBaseline = 'alphabetic';
         hideTip();
@@ -105,7 +106,7 @@ const Spectrum = (() => {
         const plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b;
         const baseY = PAD.t + plotH;
 
-        // ---- 空状态 ----
+        // ---- empty state ----
         if (len === 0 || plotW < 4 || plotH < 4) {
             geom = null;
             ctx.fillStyle = '#b3bdcc';
@@ -116,7 +117,7 @@ const Spectrum = (() => {
             return true;
         }
 
-        // ---- 几何:K 条、每条一个 slot(整数边界保证条形不重叠) ----
+        // ---- geometry: K bars with integer slots ----
         const K = Math.max(1, Math.min(len, plotW, MAX_BARS));
         const slot = plotW / K;
         geom = { padL: PAD.l, plotW, K, slot };
@@ -124,40 +125,40 @@ const Spectrum = (() => {
         const mArr = Array.isArray(S.muted) ? S.muted : [];
         const cut = S.harmonics;
 
-        // 最大振幅只在可见条内求(K ≤ 600,O(K))
+        // find the maximum amplitude among visible bars
         let maxAmp = 0;
         for (let i = 0; i < K; i++) { const a = S.fourier[i].amp; if (a > maxAmp) maxAmp = a; }
 
-        // 基线
+        // baseline
         ctx.fillStyle = '#e4e8ef';
         ctx.fillRect(PAD.l, baseY, plotW, 1);
 
-        // ---- 条形:O(K) 次 fillRect ----
+        // ---- bars: O(K) fillRect calls ----
         const gap = slot > 3 ? 1 : 0;
         let curFill = null, curAlpha = null;
         for (let i = 0; i < K; i++) {
             const a = S.fourier[i].amp;
-            if (!(a > 0)) continue;                            // 非正振幅不画(仍可被命中测试)
+            if (!(a > 0)) continue;                            // skip non-positive amplitudes
             let bh = maxAmp > 0 ? plotH * Math.sqrt(a / maxAmp) : 0;
-            if (bh < 1) bh = 1;                                // 可见小谐波至少 1px
+            if (bh < 1) bh = 1;                                // keep small visible harmonics at least 1px
             const x0 = Math.round(PAD.l + i * slot);
             let bw = Math.round(PAD.l + (i + 1) * slot) - x0 - gap;
             if (bw < 1) bw = 1;
             const fill = mArr[i] ? COLOR_MUTED : COLOR_ON;
-            const alpha = i >= cut ? ALPHA_BEYOND : 1;         // 超出 harmonics 截断 → 半透明
+            const alpha = i >= cut ? ALPHA_BEYOND : 1;         // beyond harmonics cutoff becomes translucent
             if (fill !== curFill) { ctx.fillStyle = fill; curFill = fill; }
             if (alpha !== curAlpha) { ctx.globalAlpha = alpha; curAlpha = alpha; }
             ctx.fillRect(x0, baseY - bh, bw, bh);
         }
         ctx.globalAlpha = 1;
 
-        // ---- y 轴缩放标注 ----
+        // ---- y-axis scale label ----
         ctx.fillStyle = '#c3cbd6';
         ctx.font = '8px "Segoe UI", -apple-system, sans-serif';
         ctx.textAlign = 'left';
         ctx.fillText('√amp', PAD.l, PAD.t - 3);
 
-        // ---- harmonics 截断:竖直虚线 + 小标签 ----
+        // ---- harmonics cutoff: dashed line and label ----
         if (cut >= 1 && cut < len && cut <= K) {
             const hx = Math.round(PAD.l + cut * slot);
             ctx.save();
@@ -169,7 +170,7 @@ const Spectrum = (() => {
             ctx.lineTo(hx + 0.5, baseY);
             ctx.stroke();
             ctx.restore();
-            if (hx >= PAD.l + 44) {                            // 避开左侧 √amp 标注
+            if (hx >= PAD.l + 44) {                            // avoid the left sqrt-amp label
                 ctx.fillStyle = '#9aa5b4';
                 ctx.font = '8px "Segoe UI", -apple-system, sans-serif';
                 if (hx + 30 <= PAD.l + plotW) { ctx.textAlign = 'left'; ctx.fillText('H=' + cut, hx + 3, 8); }
@@ -181,7 +182,7 @@ const Spectrum = (() => {
         return true;
     }
 
-    // ===== 交互 =====
+    // ===== Interaction =====
 
     function indexAt(x) {
         if (!geom || S.fourier.length === 0) return -1;
@@ -207,7 +208,7 @@ const Spectrum = (() => {
         if (left < 3) left = 3;
         if (left > wr.width - tw - 3) left = Math.max(3, wr.width - tw - 3);
         let top = y - th - 9;
-        if (top < 3) top = y + 15;                             // 靠近顶部时翻到光标下方
+        if (top < 3) top = y + 15;                             // move below the cursor near the top
         if (top > wr.height - th - 3) top = Math.max(3, wr.height - th - 3);
         tip.style.left = Math.round(left) + 'px';
         tip.style.top = Math.round(top) + 'px';
@@ -228,11 +229,11 @@ const Spectrum = (() => {
         if (i >= 0) toggleMute(i);
     }
 
-    // ===== 初始化 =====
+    // ===== Initialization =====
 
     function init() {
         canvas = document.getElementById('spectrumCanvas');
-        if (!canvas) return false;                             // 面板 DOM 不存在 → 保持桩行为
+        if (!canvas) return false;                             // Missing panel DOM keeps the module as a no-op.
         wrap = canvas.parentElement || document.querySelector('.spectrum-wrap');
         ctx = canvas.getContext('2d');
         tip = document.getElementById('spectrumTip');
@@ -245,7 +246,7 @@ const Spectrum = (() => {
         canvas.addEventListener('mouseleave', hideTip);
         if (resetBtn) resetBtn.addEventListener('click', resetMutes);
 
-        // 自建 ResizeObserver(spectrum.js 内,不动 app.js):尺寸变化自动重绘
+        // use a local ResizeObserver so size changes redraw automatically
         if (typeof ResizeObserver !== 'undefined') {
             const ro = new ResizeObserver(() => { requestAnimationFrame(() => { if (inited) drawPanel(); }); });
             ro.observe(wrap);
@@ -254,20 +255,20 @@ const Spectrum = (() => {
         return true;
     }
 
-    // ===== 对外接口 =====
+    // ===== Public API =====
 
     function refresh() {
-        if (!inited && !init()) return;                        // spectrumCanvas 不存在时直接 return(契约)
+        if (!inited && !init()) return;                        // Missing spectrumCanvas keeps the module as a no-op.
         drawPanel();
     }
 
-    refresh();  // 脚本加载即绘制空状态提示
+    refresh();  // Draw the empty-state note when the script loads.
 
     return {
         refresh,
-        toggleMute,   // 供测试/其它模块直接切换静音
-        resetMutes,   // 清除全部静音
-        snapshot() {  // 只读调试/测试快照(几何与计数)
+        toggleMute,   // for tests and other modules
+        resetMutes,   // clear all mute flags
+        snapshot() {  // read-only debug and test snapshot
             return {
                 total: S.fourier.length,
                 K: geom ? geom.K : 0,

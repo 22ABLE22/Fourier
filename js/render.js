@@ -1,39 +1,66 @@
-// 渲染:原始笔迹/轨迹/旋轮线绘制、动画循环、画布尺寸与坐标换算(worldToScreen/screenToWorld/rawToScreen)
-function redrawDrawing() {
-    fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
-    if (S.rawPoints.length < 2) return;
-    fourierCtx.strokeStyle = '#2563eb'; fourierCtx.lineWidth = 2 * S.canvasDpr; fourierCtx.lineCap = 'round'; fourierCtx.lineJoin = 'round';
-    fourierCtx.beginPath();
-    const p0 = rawToScreen(S.rawPoints[0]);
-    fourierCtx.moveTo(p0.x, p0.y);
-    for (let i = 1; i < S.rawPoints.length; i++) {
-        const pi = rawToScreen(S.rawPoints[i]);
-        fourierCtx.lineTo(pi.x, pi.y);
+// Rendering: input strokes, trails, epicycles, animation, canvas sizing, and coordinate transforms.
+
+// Offscreen input-layer cache: a same-size physical-pixel snapshot makes cache hits O(1).
+let _inputLayer = null, _inputLayerKey = null, _inputLayerRef = null;
+
+// Rebuild or reuse the layer from size, DPR, view, fit center, point reference, and length.
+function renderInputLayer() {
+    const w = cw(fourierCanvas), h = ch(fourierCanvas);
+    const key = [w, h, S.canvasDpr, S.viewX, S.viewY, S.viewScale, S.fitCenter.x, S.fitCenter.y, S.rawPoints.length].join('|');
+    if (_inputLayer && _inputLayerKey === key && _inputLayerRef === S.rawPoints) return _inputLayer;
+    if (!_inputLayer) _inputLayer = document.createElement('canvas');
+    if (_inputLayer.width !== w || _inputLayer.height !== h) { _inputLayer.width = w; _inputLayer.height = h; }
+    const ctx = _inputLayer.getContext('2d');
+    ctx.clearRect(0, 0, w, h);  // With fewer than two points, clear the layer so drawImage is empty.
+    if (S.rawPoints.length > 1) {
+        ctx.strokeStyle = 'rgba(37,99,235,0.35)'; ctx.lineWidth = 1.6 * S.canvasDpr;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath();
+        const p0 = rawToScreen(S.rawPoints[0]);
+        ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < S.rawPoints.length; i++) {
+            const pi = rawToScreen(S.rawPoints[i]);
+            ctx.lineTo(pi.x, pi.y);
+        }
+        ctx.stroke();
     }
-    fourierCtx.stroke();
+    _inputLayerKey = key; _inputLayerRef = S.rawPoints;
+    return _inputLayer;
 }
 
-function animate() {
-    if (S.paused) { S.animationId = requestAnimationFrame(animate); return; }
-    const dt = 0.002 * S.speed; S.time = (S.time + dt) % 1;
-    const limit = Math.min(S.harmonics, S.fourier.length);
-    S.path = getTrail(S.time, limit > 1000 ? 120 : 240);
+function redrawDrawing() {
+    fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
+    _inputLayerKey = null;  // force a rebuild so direct and cached paths stay consistent
+    fourierCtx.drawImage(renderInputLayer(), 0, 0);
+}
+
+// Previous animation timestamp; null means not started and is reset by stopAnimation.
+let _lastAnimTs = null;
+
+function animate(ts) {
+    if (typeof ts !== 'number') ts = performance.now();  // no-argument startFit calls use this branch
+    if (S.paused) { _lastAnimTs = ts; S.animationId = requestAnimationFrame(animate); return; }
+    // Integrate rAF deltas at 0.12 cycles/sec; cap deltas at 0.1s to avoid background-tab jumps.
+    const dtSec = _lastAnimTs === null ? 0 : Math.min((ts - _lastAnimTs) / 1000, 0.1);
+    _lastAnimTs = ts;
+    S.time = (S.time + 0.12 * S.speed * dtSec) % 1;
+    rebuildTrail();  // rebuild the trail for the current harmonics and time
     draw(); S.animationId = requestAnimationFrame(animate);
 }
 
-// 世界坐标→屏幕坐标
+// World coordinates to screen coordinates
 function worldToScreen(p) {
     const fw = cw(fourierCanvas), fh = ch(fourierCanvas);
     return { x: fw/2 + S.viewX + p.x * S.viewScale, y: fh/2 + S.viewY + p.y * S.viewScale };
 }
 
-// 屏幕坐标→世界坐标
+// Screen coordinates to world coordinates
 function screenToWorld(p) {
     const fw = cw(fourierCanvas), fh = ch(fourierCanvas);
     return { x: (p.x - fw/2 - S.viewX) / S.viewScale, y: (p.y - fh/2 - S.viewY) / S.viewScale };
 }
 
-// 原始笔迹坐标→屏幕坐标(先减拟合中心得到世界坐标,再投影到屏幕)
+// Raw stroke coordinates to screen coordinates via the fit center.
 function rawToScreen(p) {
     return worldToScreen({ x: p.x - S.fitCenter.x, y: p.y - S.fitCenter.y });
 }
@@ -42,17 +69,8 @@ function draw() {
     const fw = cw(fourierCanvas), fh = ch(fourierCanvas), cx = fw/2 + S.viewX, cy = fh/2 + S.viewY;
     fourierCtx.clearRect(0, 0, fw, fh);
     fourierCtx.lineJoin = 'round'; fourierCtx.lineCap = 'round';
-    if (S.rawPoints.length > 1) {
-        fourierCtx.strokeStyle = 'rgba(37,99,235,0.35)'; fourierCtx.lineWidth = 1.6 * S.canvasDpr;
-        fourierCtx.beginPath();
-        const s0 = rawToScreen(S.rawPoints[0]);
-        fourierCtx.moveTo(s0.x, s0.y);
-        for (let i = 1; i < S.rawPoints.length; i++) {
-            const si = rawToScreen(S.rawPoints[i]);
-            fourierCtx.lineTo(si.x, si.y);
-        }
-        fourierCtx.stroke();
-    }
+    renderInputLayer();  // Input layer: O(1) on a cache hit; rebuild only when size, view, or stroke data changes.
+    fourierCtx.drawImage(_inputLayer, 0, 0);
     fourierCtx.strokeStyle = '#ef4444'; fourierCtx.lineWidth = 2.2 * S.canvasDpr;
     if (S.path.length > 1) {
         fourierCtx.beginPath();
@@ -67,7 +85,7 @@ function draw() {
     if (S.fourier.length > 0 && S.path.length > 0) {
         const chainEnd = drawEpicycles(fourierCtx, cx, cy, S.time, S.harmonics, S.viewScale);
         const hp = worldToScreen(getCurveHead(S.time));
-        // 笔尖残余矢量:链条末端到画笔尖的差距超过阈值时画虚线提示
+        // Draw a dashed residual connector when the chain end differs from the curve head.
         const gap = Math.hypot(chainEnd.x - hp.x, chainEnd.y - hp.y);
         if (gap >= 0.5) {
             fourierCtx.shadowBlur = 0;
@@ -87,6 +105,7 @@ function drawEpicycles(ctx, ox, oy, t, n, s) {
     let px = 0, py = 0;
     const limit = Math.min(n, S.fourier.length, CFG.MAX_VISIBLE_EPICYCLES);
     for (let i = 0; i < limit; i++) {
+        if (S.muted[i]) continue;  // Muted harmonics are excluded from the chain, circles, and radii.
         const { freq, amp, phase } = S.fourier[i];
         const angle = freq * 2*Math.PI * t + phase;
         const nx = px + amp * Math.cos(angle), ny = py + amp * Math.sin(angle);
@@ -105,6 +124,7 @@ function drawEpicycles(ctx, ox, oy, t, n, s) {
 
 function stopAnimation() {
     if (S.animationId) { cancelAnimationFrame(S.animationId); S.animationId = null; }
+    _lastAnimTs = null;
     fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
     S.paused = false; pauseBtn.textContent = '⏸️ Pause';
 }
@@ -126,9 +146,11 @@ function sizeFourierCanvas() {
         S.fitCenter = { x: S.fitCenter.x * scale + dx, y: S.fitCenter.y * scale + dy };
         S.fourier = S.fourier.map(c => ({ ...c, amp: c.amp * scale }));
         S.path = S.path.map(p => ({ x: p.x * scale, y: p.y * scale }));
+        S.viewX *= scale; S.viewY *= scale;  // Scale view offsets with the resize; viewScale stays unchanged.
     }
-    rebuildCurve();  // 缩放数据变换之后重建曲线采样表(S.fourier 为空时会清空表)
+    rebuildCurve();  // rebuild the curve table after resize transforms
 
+    _inputLayerKey = null;  // Invalidate the input-layer cache after a size change.
     S.canvasDpr = dpr;
     fourierCanvas.width = w; fourierCanvas.height = h;
     fourierCanvas.style.width = cssW + 'px';

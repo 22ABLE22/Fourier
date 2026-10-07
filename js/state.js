@@ -1,4 +1,4 @@
-// 共享常量与应用状态:所有跨文件共享的状态集中在此,其他文件统一通过 S.xxx / CFG.xxx 读写
+// Shared constants and application state; other files read and write S.xxx / CFG.xxx here.
 const CFG = { BASE_SAMPLES:256, MAX_SAFE_SAMPLES:1<<16, MAX_HARMONICS:(1<<16)/2, MAX_VISIBLE_EPICYCLES:160, MIN_VIEW_SCALE:0.02, MAX_VIEW_SCALE:100 };
 const S = {
     rawPoints:[], fourier:[], path:[], time:0, curveTable:[],
@@ -8,7 +8,7 @@ const S = {
     viewX:0, viewY:0, viewScale:1,
     isDrawing:false, lastPt:null, isPanning:false, panStart:null,
     canvasDpr:1, harmonicTimer:null, harmonicWarningAt:0,
-    muted:[]  // 契约:与 S.fourier 下标对齐的布尔数组,true=该谐波静音(频谱面板用)
+    muted:[]  // Boolean flags aligned with S.fourier; true excludes a harmonic.
 };
 const cw = c => c.width, ch = c => c.height;
 const fourierCanvas = document.getElementById('fourierCanvas');
