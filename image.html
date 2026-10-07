@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fourier Series Closed Curve Fitting</title>
+    <title>Fourier Image Tracer</title>
     <style>
         :root {
             --bg:#f4f6f9; --card:#ffffff; --line:#e4e8ef; --line-soft:#eef1f6;
@@ -80,10 +80,9 @@
         button[aria-pressed="false"] { color:var(--muted); background:var(--btn-off-bg); }
         button.success { color:#fff; background:var(--green); border-color:var(--green); }
         button.success:hover { background:#0da271; border-color:#0da271; }
+        button:disabled { opacity:0.55; cursor:not-allowed; }
         button.danger { color:var(--danger-text); border-color:var(--danger-border); }
         button.danger:hover { background:var(--danger-hover-bg); border-color:var(--danger-hover-border); }
-        button.preset { flex:1 1 auto; padding:7px 10px; font-size:0.76rem; color:var(--preset-text); border-color:var(--preset-border); }
-        button.preset:hover { background:var(--preset-hover-bg); border-color:var(--preset-hover-border); }
         .preset-row { display:flex; flex-wrap:wrap; gap:6px; }
         .field-grid { display:grid; grid-template-columns:1fr; gap:9px; }
         .field-group { display:flex; flex-direction:column; gap:5px; }
@@ -92,124 +91,89 @@
         input[type="number"]:focus { outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(79,70,229,0.14); }
         .range-row { display:flex; align-items:center; gap:8px; }
         .range-row input[type="range"] { flex:1 1 auto; accent-color:var(--brand); }
-        .range-row input[type="number"] { width:88px; flex:0 0 auto; }
-        .spectrum-wrap { position:relative; width:100%; height:120px; background:var(--cell-bg); border:1px solid var(--line-soft); border-radius:9px; overflow:hidden; }
-        .spectrum-wrap canvas { position:absolute; left:0; top:0; width:100%; height:100%; display:block; cursor:pointer; }
-        .spectrum-note { font-size:0.68rem; color:var(--note); text-align:center; margin-top:4px; }
-        .spectrum-head-btn { margin-left:auto; padding:2px 8px; font-size:0.6rem; font-weight:500; color:var(--muted); background:var(--btn-bg); border:1px solid var(--btn-border); border-radius:6px; cursor:pointer; box-shadow:0 1px 2px rgba(16,24,40,0.04); transition:background .15s,border-color .15s; }
-        .spectrum-head-btn:hover { background:var(--btn-hover-bg); border-color:var(--btn-hover-border); }
-        .spectrum-tip { position:absolute; z-index:6; left:0; top:0; max-width:calc(100% - 6px); padding:4px 7px; font-size:0.64rem; line-height:1.4; color:#f9fafb; background:rgba(17,24,39,0.93); border-radius:6px; white-space:nowrap; pointer-events:none; box-shadow:0 3px 10px rgba(16,24,40,0.22); font-variant-numeric:tabular-nums; }
-        .spectrum-tip[hidden] { display:none; }
+        .range-val { flex:0 0 auto; min-width:30px; text-align:right; font-size:0.75rem; color:var(--label); font-variant-numeric:tabular-nums; }
         .info-bar { flex:0 0 auto; display:grid; grid-template-columns:repeat(2,1fr); gap:7px; margin-top:auto; padding-top:9px; }
         .info-cell { padding:6px 2px; text-align:center; background:var(--cell-bg); border:1px solid var(--line-soft); border-radius:9px; }
         .info-cell .label { font-size:0.6rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--cell-label); }
         .info-cell .value { margin-top:2px; font-size:0.98rem; font-weight:600; color:var(--blue); font-variant-numeric:tabular-nums; }
-        .legend { flex:0 0 auto; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:14px; font-size:0.72rem; color:var(--muted); }
-        .legend-item { display:flex; align-items:center; gap:6px; }
-        .legend-dot { width:9px; height:9px; border-radius:50%; }
+        .info-cell .value.small { font-size:0.72rem; font-weight:500; color:var(--muted); }
         footer { flex:0 0 auto; text-align:center; font-size:0.69rem; color:var(--footer); }
         .toast { position:fixed; top:16px; left:50%; z-index:999; padding:9px 20px; font-size:0.82rem; color:#fff; background:#111827; border-radius:9px; box-shadow:0 8px 24px rgba(16,24,40,0.18); transform:translateX(-50%) translateY(-300%); transition:transform .35s cubic-bezier(.34,1.4,.64,1); pointer-events:none; }
         .toast.show { transform:translateX(-50%) translateY(0); }
         .toast.error { background:#dc2626; }
+        /* --- Page-specific additions for the image tracer --- */
+        input[type="file"] { width:100%; padding:7px 9px; font-size:0.76rem; color:var(--text); background:var(--input-bg); border:1px dashed var(--input-border); border-radius:8px; }
+        input[type="file"]::file-selector-button { padding:5px 11px; margin-right:10px; font-size:0.74rem; font-weight:500; color:var(--btn-text); background:var(--btn-bg); border:1px solid var(--btn-border); border-radius:6px; cursor:pointer; transition:background .15s,border-color .15s; }
+        input[type="file"]::file-selector-button:hover { background:var(--btn-hover-bg); border-color:var(--btn-hover-border); }
+        .chk-row { display:flex; align-items:center; gap:8px; font-size:0.76rem; color:var(--label); }
+        .chk-row input[type="checkbox"] { width:15px; height:15px; accent-color:var(--brand); cursor:pointer; }
+        .hint-row { font-size:0.68rem; color:var(--note); line-height:1.5; }
+        .stage.drop-active { border-color:var(--brand); box-shadow:inset 0 0 0 2px rgba(79,70,229,0.35); }
+        .stage.drop-active .drawing-hint { color:var(--brand); }
         @media (max-height:860px) { .app { padding:10px 14px; gap:8px; } .panel { padding:10px; } .panel h2 { margin-bottom:7px; } }
         @media (max-height:740px) { .sidebar { gap:7px; } .info-cell .value { font-size:0.9rem; } }
         @media (max-width:1240px) { .sidebar { flex:0 0 302px; } }
-        @media (max-width:960px) { body { overflow:auto; } .app { height:auto; padding:12px; } header { flex-direction:column; align-items:flex-start; gap:3px; } .main-layout { flex-direction:column; } .sidebar { flex:0 0 auto; overflow:visible; } .stage { height:min(88vw,520px); } .legend { justify-content:flex-start; } }
+        @media (max-width:960px) { body { overflow:auto; } .app { height:auto; padding:12px; } header { flex-direction:column; align-items:flex-start; gap:3px; } .main-layout { flex-direction:column; } .sidebar { flex:0 0 auto; overflow:visible; } .stage { height:min(88vw,520px); } }
     </style>
 </head>
 <body>
     <div class="app">
         <header>
-            <h1><span class="logo">📈</span>Fourier Series Closed Curve Fitting</h1>
+            <h1><span class="logo">🖼</span>Fourier Image Tracer</h1>
             <div class="head-right">
-                <p class="subtitle">Draw a closed curve directly on the canvas, then watch rotating circles trace it back</p>
-                <a class="nav-link" href="image.html">🖼 Trace an Image →</a>
+                <a class="nav-link" href="index.html">← Main App</a>
                 <button id="themeBtn" type="button" class="btn-sm">🌗 Auto</button>
             </div>
         </header>
         <div class="main-layout">
             <aside class="panel sidebar">
                 <div class="side-block">
-                    <h2>⚡ Presets</h2>
-                    <div class="preset-row">
-                        <button class="preset" data-preset="heart">❤️ Heart</button>
-                        <button class="preset" data-preset="star">⭐ Star</button>
-                        <button class="preset" data-preset="butterfly">🦋 Butterfly</button>
-                        <button class="preset" data-preset="treble">🎵 Treble Clef</button>
-                        <button class="preset" data-preset="arrow">➡️ Arrow</button>
-                        <button class="preset" data-preset="infinity">♾️ Infinity</button>
-                    </div>
+                    <h2>📷 Source</h2>
+                    <input type="file" id="fileInput" accept="image/*">
+                    <p class="hint-row">Or drop an image anywhere on the preview panel. Large images are downscaled to 1024px max side.</p>
                 </div>
                 <div class="side-block">
-                    <h2>🎛️ Controls</h2>
+                    <h2>⚙️ Trace</h2>
                     <div class="field-grid">
                         <div class="field-group">
-                            <label for="smoothRange">Smoothness (1-10)</label>
+                            <label for="thresholdRange">Threshold (0-255)</label>
                             <div class="range-row">
-                                <input type="range" id="smoothRange" min="1" max="10" step="1" value="3">
-                                <input type="number" id="smoothInput" min="1" max="10" step="1" value="3">
+                                <input type="range" id="thresholdRange" min="0" max="255" step="1" value="128">
+                                <span id="thresholdVal" class="range-val">128</span>
                             </div>
                         </div>
+                        <label class="chk-row"><input type="checkbox" id="invertChk"> Invert (dark background)</label>
                         <div class="field-group">
-                            <label for="harmonicRange">Harmonics (1-32768)</label>
+                            <label for="smoothRange">Smoothing (0-5)</label>
                             <div class="range-row">
-                                <input type="range" id="harmonicRange" min="0" max="1" step="0.001" value="0.155">
-                                <input type="number" id="harmonicInput" min="1" max="32768" step="1" value="5">
+                                <input type="range" id="smoothRange" min="0" max="5" step="1" value="2">
+                                <span id="smoothVal" class="range-val">2</span>
                             </div>
                         </div>
-                        <div class="field-group">
-                            <label for="speedRange">Speed (x)</label>
-                            <div class="range-row">
-                                <input type="range" id="speedRange" min="0.01" max="5" step="0.001" value="1">
-                                <input type="number" id="speedInput" min="0.01" max="5" step="0.001" value="1">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="controls">
-                        <button id="circleBtn" aria-pressed="true">⭕ Circles</button>
-                        <button id="radiusBtn" aria-pressed="true">📏 Radii</button>
-                        <button id="fitBtn" class="success">🎨 Fit</button>
-                        <button id="clearBtn" class="danger">🗑️ Clear</button>
-                        <button id="pauseBtn">⏸️ Pause</button>
-                        <button id="resetViewBtn">🔄 Reset View</button>
+                        <label class="chk-row"><input type="checkbox" id="maskChk" checked> Show mask</label>
                     </div>
                 </div>
                 <div class="side-block">
-                    <h2>📊 Spectrum <button id="spectrumResetBtn" class="spectrum-head-btn" type="button">Reset mutes</button></h2>
-                    <div class="spectrum-wrap"><canvas id="spectrumCanvas"></canvas><div id="spectrumTip" class="spectrum-tip" hidden></div></div>
-                    <div id="spectrumNote" class="spectrum-note">Click a bar to mute/unmute that harmonic</div>
+                    <button id="useBtn" class="success" disabled>✨ Use in Main App</button>
                 </div>
                 <div class="info-bar">
-                    <div class="info-cell"><div class="label" title="Number of curve samples fed into the Fourier transform">Samples</div><div id="infoSamples" class="value">0</div></div>
-                    <div class="info-cell"><div class="label" title="Remaining spectral energy after the selected harmonics">Error</div><div id="infoError" class="value">-</div></div>
+                    <div class="info-cell"><div class="label" title="Total number of traced contour points">Points</div><div id="infoPoints" class="value">0</div></div>
+                    <div class="info-cell"><div class="label">Status</div><div id="infoStatus" class="value small">Ready</div></div>
                 </div>
             </aside>
-            <section class="panel stage">
+            <section class="panel stage" id="stage">
                 <div class="stage-head">
-                    <h2>🌀 Fourier Epicycles</h2>
-                    <div class="legend">
-                        <div class="legend-item"><div class="legend-dot" style="background:#93c5fd"></div><span>Input</span></div>
-                        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div><span>Trace</span></div>
-                        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div><span>Epicycles</span></div>
-                        <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div><span>Pen</span></div>
-                    </div>
+                    <h2>🖌️ Trace Preview</h2>
                 </div>
                 <div class="canvas-wrap">
-                    <canvas id="fourierCanvas" width="600" height="600"></canvas>
-                    <div id="stageHint" class="drawing-hint stage-hint">Draw a closed curve here or pick a preset, then press Fit</div>
+                    <canvas id="traceCanvas" width="600" height="600"></canvas>
+                    <div id="stageHint" class="drawing-hint">Drop an image here or choose a file</div>
                 </div>
             </section>
         </div>
         <footer>Fourier Series Visualization</footer>
     </div>
     <div id="toast" class="toast"></div>
-    <script src="js/state.js"></script>
-    <script src="js/math.js"></script>
-    <script src="js/fit.js"></script>
-    <script src="js/render.js"></script>
-    <script src="js/input.js"></script>
-    <script src="js/spectrum.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/image.js"></script>
 </body>
 </html>

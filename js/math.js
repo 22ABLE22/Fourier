@@ -1,4 +1,4 @@
-// 数值计算:FFT、逆离散和(ifft)、DFT、弧长重采样、平滑(自原 IIFE 原样搬运,逻辑未改)
+// Numerical helpers: FFT, inverse FFT, DFT, arc-length resampling, and smoothing.
 function fft(re, im) {
     const n = re.length;
     for (let i = 1, j = 0; i < n; i++) {
@@ -28,7 +28,7 @@ function fft(re, im) {
     }
 }
 
-// 逆离散和(未归一化):S[k]=Σ A[j]·e^{+i2πjk/T};由 conj(fft(conj(A))) 得到
+// Unnormalized inverse transform: S[k] = sum A[j] * exp(+i*2*pi*j*k/T).
 function ifft(re, im) {
     for (let i = 0; i < im.length; i++) im[i] = -im[i];
     fft(re, im);
@@ -45,8 +45,7 @@ function dft(pts) {
     fft(re, im);
 
     const halfN = Math.floor(N / 2);
-    // 缺陷E:去均值后 DC(freq=0)项恒≈0(仅浮点噪声),不再入列;
-    // 消费方(computeError/autoFitView/rebuildCurve)均只按 i < limit 遍历、不依赖 freq0 存在
+    // The centered DC term is omitted; consumers iterate by index limit and do not require freq=0.
     const coeffs = [];
     for (let i = 1; i <= halfN; i++) {
         coeffs.push({ amp: Math.hypot(re[i], im[i]) / N, phase: Math.atan2(im[i], re[i]), freq: i });

@@ -1,61 +1,83 @@
 # Fourier Series Closed Curve Fitting
 
-A visualization tool for closed curve fitting based on Fourier series.
+A zero-dependency static web app for fitting closed curves with Fourier series and visualizing the result as animated epicycles.
 
 ## Features
 
-- Draw closed curves freely with the mouse or touch (unified Pointer Events)
-- Two-finger pinch to zoom, two-finger drag to pan on touch devices
-- Middle mouse button drag to pan and mouse wheel to zoom
-- Fourier series epicycle animation visualization
-- Adjustable harmonic count up to 32,768 with real-time fitting preview
-- **Interactive spectrum panel**: visualize harmonic amplitudes and click a bar to mute/unmute that harmonic
-- Arc-length resampling keeps fitting stable regardless of drawing speed
-- Built-in presets (heart, star, butterfly, etc.)
-- Zoom and speed control
-- Responsive design with high-DPI canvas support
+- Draw closed curves with mouse, pen, or touch using Pointer Events
+- Two-finger pinch to zoom and two-finger drag to pan on touch devices
+- Middle-mouse drag to pan and mouse wheel to zoom
+- Fourier epicycle animation with frame-rate-independent speed control
+- Harmonic, smoothness, and speed controls with synchronized sliders and numeric inputs
+- Interactive spectrum panel: inspect amplitudes and mute individual harmonics
+- Image tracing page: upload or drop an image, extract its largest closed contour, and open it in the main fitter
+- Automatic contour normalization for reliable cross-page handoff
+- System-aware dark mode with persistent Auto, Light, and Dark modes
+- Built-in presets (heart, star, butterfly, treble clef, arrow, and infinity)
+- Arc-length resampling and cached fitting for stable interactive performance
+- Responsive high-DPI canvas rendering
 
 ## Usage
 
 Open the live demo: [Fourier Series Closed Curve Fitting](https://22able22.github.io/Fourier/)
 
+The site can also be opened directly from `file://`; it has no build step or runtime dependencies.
+
 - Left mouse button or one-finger touch: draw a closed curve
-- Middle mouse button drag / two-finger drag: pan the view
-- Mouse wheel / pinch gesture: zoom around the pointer
-- Spectrum panel: click a bar to mute that harmonic and see its contribution disappear
-- Preset button: load a sample curve and fit it automatically
+- Middle mouse button or two-finger drag: pan the view
+- Mouse wheel or pinch gesture: zoom around the pointer
+- Use the spectrum bars to mute or restore individual harmonics
+- Open **Trace an Image** to extract an image contour, then choose **Use in Main App**
+- Use the theme button to cycle Auto, Light, and Dark modes
 
 ## Project Structure
 
-The app is a zero-dependency static site (open `index.html` directly, no build step):
-
 ```
-index.html        # HTML shell + CSS + script tags
-js/state.js       # Shared constants (CFG) and application state (S)
-js/math.js        # FFT / DFT / arc-length resample / smoothing
-js/fit.js         # Fitting pipeline + curve table (rebuildCurve/curveAt/getTrail)
-js/render.js      # Canvas drawing, epicycles, animation loop, coordinate transforms
-js/input.js       # Pointer/mouse/touch input, pan & pinch zoom
-js/spectrum.js    # Interactive spectrum panel (amplitudes + mute toggling)
-js/ui.js          # Controls, presets, toasts, info bar
-js/app.js         # Bootstrap, resize handling
+index.html        # Main drawing and fitting page
+image.html        # Image upload, contour extraction, and handoff page
+js/state.js       # Shared constants and application state
+js/math.js        # FFT, inverse FFT, DFT, resampling, and smoothing
+js/fit.js         # Fitting pipeline and inverse-FFT curve table
+js/render.js      # Canvas drawing, epicycles, animation, and transforms
+js/input.js       # Pointer, mouse, touch, pan, and pinch input
+js/spectrum.js    # Interactive spectrum panel and mute controls
+js/ui.js          # Main-page controls, presets, theme, and toasts
+js/image.js       # Image tracing API and image-page UI
+js/app.js         # Main-page bootstrap, resize handling, and image handoff
+
+tests/fit.test.mjs          # Fast numerical and image-tracing regression tests
+.github/workflows/ci.yml    # Node syntax and regression-test workflow
 ```
 
-Scripts are classic (non-module) `<script>` tags loaded in order, so the page also
-works when opened from `file://`. All modules share the global state object `S`.
+The main page uses classic non-module script tags loaded in dependency order, so it remains compatible with direct `file://` use. The image page is self-contained apart from its single `js/image.js` script.
 
 ## Technical Details
 
-- Pure HTML5 + CSS3 + JavaScript, no dependencies
-- FFT-based spectrum calculation with dynamically sized and bounded samples
-- Curve table built once per fit via an **inverse FFT** (O(T log T)) instead of
-  per-frame harmonic summation; animation just samples the table
-- Arc-length resampling is cached, so changing smoothness only re-runs smoothing
-- Amplitude-sorted coefficients drive epicycles (max 160 visible), with a residual
-  connector drawn when more harmonics contribute than can be shown
-- High-DPI canvas rendering and adaptive animation detail for large harmonic counts
-- Unified Pointer Events: left button / single finger draws, middle button / two
-  fingers pan, wheel / pinch zooms, all through a single world↔screen transform
+- Pure HTML5, CSS3, and JavaScript with no external dependencies
+- FFT-based spectrum calculation with bounded adaptive sample counts
+- Curve tables built once per fit with an inverse FFT instead of per-frame harmonic summation
+- Arc-length resampling cached by point-set identity, endpoints, and sample count
+- Muted harmonics are excluded consistently from the curve table, epicycle chain, error estimate, and paused trail
+- Input strokes are cached in an offscreen canvas during animation
+- Image tracing uses thresholded grayscale data and marching squares, followed by smoothing, area sorting, and normalization
+- The image handoff uses `localStorage['fourier.pendingImport']` with relative navigation for GitHub Pages subpaths
+- High-DPI rendering is capped at DPR 2 for predictable performance
+
+## Tests
+
+Run the fast regression suite from the repository root:
+
+```text
+node tests/fit.test.mjs
+```
+
+Check all browser JavaScript files for syntax errors:
+
+```text
+node --check js/app.js
+```
+
+GitHub Actions runs both checks on pushes and pull requests.
 
 ## License
 
