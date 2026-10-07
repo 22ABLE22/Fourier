@@ -300,7 +300,11 @@
         invert.addEventListener('change', scheduleRetrace); mask.addEventListener('change', render);
         useBtn.addEventListener('click', function () {
             if (!normalized) return;
-            try { localStorage.setItem('fourier.pendingImport', JSON.stringify({ points: normalized, ts: Date.now() })); location.href = 'index.html'; }
+            try {
+                localStorage.setItem('fourier.pendingImport', JSON.stringify({ points: normalized, ts: Date.now() }));
+                const target = document.querySelector('meta[name="fourier-main-path"]');
+                location.href = target && target.content ? target.content : 'index.html';
+            }
             catch (error) { showToast('Could not hand off contour to the main app', true); }
         });
         ['dragenter', 'dragover'].forEach(function (type) { stage.addEventListener(type, function (event) { event.preventDefault(); stage.classList.add('drop-active'); }); });

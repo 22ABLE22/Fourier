@@ -28,13 +28,16 @@ The site can also be opened directly from `file://`; it has no build step or run
 - Mouse wheel or pinch gesture: zoom around the pointer
 - Use the spectrum bars to mute or restore individual harmonics
 - Open **Trace an Image** to extract an image contour, then choose **Use in Main App**
+- On GitHub Pages, use `/Fourier/draw/` for drawing and `/Fourier/trace/` for image tracing
 - Use the theme button to cycle Auto, Light, and Dark modes
 
 ## Project Structure
 
 ```
 index.html        # Main drawing and fitting page
-image.html        # Image upload, contour extraction, and handoff page
+image.html        # Root image upload, contour extraction, and handoff page
+draw/index.html   # GitHub Pages drawing entry at /Fourier/draw/
+trace/index.html  # GitHub Pages tracing entry at /Fourier/trace/
 js/state.js       # Shared constants and application state
 js/math.js        # FFT, inverse FFT, DFT, resampling, and smoothing
 js/fit.js         # Fitting pipeline and inverse-FFT curve table
