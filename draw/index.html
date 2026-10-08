@@ -93,7 +93,9 @@
         .range-row { display:flex; align-items:center; gap:8px; }
         .range-row input[type="range"] { flex:1 1 auto; accent-color:var(--brand); }
         .range-row input[type="number"] { width:88px; flex:0 0 auto; }
-        .spectrum-wrap { position:relative; width:100%; height:120px; background:var(--cell-bg); border:1px solid var(--line-soft); border-radius:9px; overflow:hidden; }
+        .timeline-control { display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--label); }
+         .timeline-control input[type="range"] { flex:1 1 auto; min-width:0; accent-color:var(--brand); }
+         .spectrum-wrap { position:relative; width:100%; height:120px; background:var(--cell-bg); border:1px solid var(--line-soft); border-radius:9px; overflow:hidden; }
         .spectrum-wrap canvas { position:absolute; left:0; top:0; width:100%; height:100%; display:block; cursor:pointer; }
         .spectrum-note { font-size:0.68rem; color:var(--note); text-align:center; margin-top:4px; }
         .spectrum-head-btn { margin-left:auto; padding:2px 8px; font-size:0.6rem; font-weight:500; color:var(--muted); background:var(--btn-bg); border:1px solid var(--btn-border); border-radius:6px; cursor:pointer; box-shadow:0 1px 2px rgba(16,24,40,0.04); transition:background .15s,border-color .15s; }
@@ -165,7 +167,8 @@
                             </div>
                         </div>
                     </div>
-                    <div class="controls">
+                    <label class="timeline-control" for="timelineRange">Timeline <input type="range" id="timelineRange" min="0" max="1" step="0.001" value="0"></label>
+                     <div class="controls">
                         <button id="circleBtn" aria-pressed="true">⭕ Circles</button>
                         <button id="radiusBtn" aria-pressed="true">📏 Radii</button>
                         <button id="fitBtn" class="success">🎨 Fit</button>

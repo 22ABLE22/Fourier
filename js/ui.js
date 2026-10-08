@@ -11,6 +11,7 @@ const speedInput = document.getElementById('speedInput');
 const smoothRange = document.getElementById('smoothRange');
 const harmonicRange = document.getElementById('harmonicRange');
 const speedRange = document.getElementById('speedRange');
+const timelineRange = document.getElementById('timelineRange');
 const themeBtn = document.getElementById('themeBtn');
 const infoSamples = document.getElementById('infoSamples');
 const infoError = document.getElementById('infoError');
@@ -110,6 +111,19 @@ speedRange.addEventListener('input', () => {
     speedInput.value = String(Math.round(S.speed * 1000) / 1000);
 });
 
+function scrubTimeline() {
+    const t = parseFloat(timelineRange.value);
+    if (!isFinite(t)) return;
+    if (S.animationId) stopAnimation();
+    S.time = Math.min(1, Math.max(0, t));
+    S.paused = true;
+    pauseBtn.textContent = '▶️ Resume';
+    rebuildTrail();
+    draw();
+}
+timelineRange.addEventListener('input', scrubTimeline);
+timelineRange.addEventListener('change', scrubTimeline);
+
 // Initialize both halves of each control pair from the current shared state
 smoothInput.value = String(S.smoothness);
 smoothRange.value = String(S.smoothness);
@@ -117,10 +131,20 @@ harmonicInput.value = String(S.harmonics);
 harmonicRange.value = String(harmToRangeT(S.harmonics));
 speedInput.value = String(Math.round(S.speed * 1000) / 1000);
 speedRange.value = String(S.speed);
+if (timelineRange) timelineRange.value = S.time.toFixed(3);
 
 pauseBtn.addEventListener('click', () => {
-    if (!S.animationId) return;
-    S.paused = !S.paused; pauseBtn.textContent = S.paused ? '▶️ Resume' : '⏸️ Pause';
+    if (!S.animationId) {
+        if (!S.paused) return;
+        S.paused = false;
+        pauseBtn.textContent = '⏸️ Pause';
+        if (timelineRange) timelineRange.value = S.time.toFixed(3);
+        animate();
+        return;
+    }
+    S.paused = !S.paused;
+    pauseBtn.textContent = S.paused ? '▶️ Resume' : '⏸️ Pause';
+    if (timelineRange) timelineRange.value = S.time.toFixed(3);
 });
 
 resetViewBtn.addEventListener('click', () => { autoFitView(); draw(); });

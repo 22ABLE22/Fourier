@@ -52,7 +52,9 @@
         const threshold = Math.max(0, Math.min(255, Number(options.threshold === undefined ? 128 : options.threshold)));
         const invert = !!options.invert;
         const smoothing = Math.max(0, Math.min(8, Math.round(Number(options.smoothing || 0))));
-        const maxPoints = Math.max(30, Number(options.maxPoints || 2000));
+        const maxPoints = Math.min(2000, Math.max(30, Number(options.maxPoints || 2000)));
+        const minAreaRatio = Math.max(0, Number(options.minAreaRatio === undefined ? 0.0005 : options.minAreaRatio));
+        const closeGaps = options.closeGaps !== false;
         const W = width + 2, H = height + 2;
         const gray = new Uint8Array(W * H);
         gray.fill(255);
@@ -63,6 +65,33 @@
                 let value = 0.299 * src[i] + 0.587 * src[i + 1] + 0.114 * src[i + 2];
                 if (invert) value = 255 - value;
                 gray[(y + 1) * W + x + 1] = value;
+            }
+        }
+
+        // A single 3x3 close repairs one-pixel breaks without materially changing the contour.
+        if (closeGaps) {
+            const binary = new Uint8Array(W * H);
+            binary.fill(1);
+            for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+                const i = y * W + x;
+                binary[i] = gray[i] >= threshold ? 1 : 0;
+            }
+            const dilated = new Uint8Array(W * H);
+            for (let x = 0; x < W; x++) { dilated[x] = 1; dilated[(H - 1) * W + x] = 1; }
+            for (let y = 0; y < H; y++) { dilated[y * W] = 1; dilated[y * W + W - 1] = 1; }
+            for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+                const i = y * W + x;
+                for (let dy = -1; dy <= 1 && !dilated[i]; dy++) for (let dx = -1; dx <= 1; dx++) {
+                    if (binary[(y + dy) * W + x + dx]) { dilated[i] = 1; break; }
+                }
+            }
+            for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+                const i = y * W + x;
+                let keep = 1;
+                for (let dy = -1; dy <= 1 && keep; dy++) for (let dx = -1; dx <= 1; dx++) {
+                    if (!dilated[(y + dy) * W + x + dx]) { keep = 0; break; }
+                }
+                gray[i] = keep ? 255 : 0;
             }
         }
 
@@ -152,26 +181,41 @@
                 minY = Math.min(minY, a.y); maxY = Math.max(maxY, a.y);
             }
             const absArea = Math.abs(area) / 2;
-            if (absArea < 1) continue;
+            if (absArea < Math.max(1, width * height * minAreaRatio)) continue;
             if (maxX - minX >= width + 1 && maxY - minY >= height + 1) continue;
             const processed = smoothing ? smoothLoop(points, smoothing) : points;
             loops.push({ points: processed, area: absArea });
         }
         loops.sort(function (a, b) { return b.area - a.area; });
-        const selected = loops.slice(0, 16).map(function (entry) { return entry.points; });
-        let total = selected.reduce(function (sum, loop) { return sum + loop.length; }, 0);
-        if (total > maxPoints) {
-            const quotas = selected.map(function (loop) { return Math.max(3, Math.floor(maxPoints * loop.length / total)); });
-            let quotaTotal = quotas.reduce(function (sum, n) { return sum + n; }, 0);
-            while (quotaTotal > maxPoints) {
-                let index = -1;
-                for (let i = 0; i < quotas.length; i++) if (quotas[i] > 3 && (index < 0 || quotas[i] > quotas[index])) index = i;
-                if (index < 0) break;
-                quotas[index]--; quotaTotal--;
-            }
-            return selected.map(function (loop, i) { return decimate(loop, quotas[i]); });
+        if (!loops.length) return [];
+
+        // Keep one connected path. Nearby substantial rings are appended with a short bridge;
+        // distant specks stay excluded so the main app never receives disjoint fragments.
+        const main = loops[0];
+        function bounds(points) {
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            points.forEach(function (p) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); });
+            return { minX: minX, maxX: maxX, minY: minY, maxY: maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, size: Math.max(maxX - minX, maxY - minY) };
         }
-        return selected;
+        function nearestIndex(points, point) {
+            let best = 0, distance = Infinity;
+            points.forEach(function (p, i) { const dx = p.x - point.x, dy = p.y - point.y, d = dx * dx + dy * dy; if (d < distance) { distance = d; best = i; } });
+            return best;
+        }
+        let merged = main.points.slice(), mainBounds = bounds(merged);
+        loops.slice(1).forEach(function (entry) {
+            const candidateBounds = bounds(entry.points);
+            const dx = candidateBounds.cx - mainBounds.cx, dy = candidateBounds.cy - mainBounds.cy;
+            if (entry.area < main.area * 0.01 || Math.hypot(dx, dy) >= mainBounds.size * 0.75) return;
+            let bestMain = 0, bestCandidate = 0, bestDistance = Infinity;
+            merged.forEach(function (a, ai) { entry.points.forEach(function (b, bi) { const ddx = a.x - b.x, ddy = a.y - b.y, d = ddx * ddx + ddy * ddy; if (d < bestDistance) { bestDistance = d; bestMain = ai; bestCandidate = bi; } }); });
+            const ordered = [];
+            for (let i = 0; i < entry.points.length; i++) ordered.push(entry.points[(bestCandidate + i) % entry.points.length]);
+            merged = merged.slice(0, bestMain + 1).concat(ordered, [merged[bestMain]], merged.slice(bestMain + 1));
+            mainBounds = bounds(merged);
+        });
+        if (merged.length > maxPoints) merged = decimate(merged, maxPoints);
+        return [merged];
     }
 
     function traceFromCanvas(canvas, options) {
@@ -200,14 +244,16 @@
         const hint = document.getElementById('stageHint');
         const toast = document.getElementById('toast');
         const themeBtn = document.getElementById('themeBtn');
+        const autoThreshold = document.getElementById('autoThresholdBtn');
         let sourceCanvas = null, sourceData = null, contours = [], normalized = null, maskCanvas = null, queued = false;
+        let lastStatusMessage = '';
 
         function showToast(message, error) {
             if (!toast) return;
             toast.textContent = message; toast.className = 'toast show' + (error ? ' error' : '');
             window.setTimeout(function () { toast.className = 'toast'; }, 2200);
         }
-        function setStatus(value) { if (statusInfo) statusInfo.textContent = value; }
+        function setStatus(value) { if (value === lastStatusMessage) return; lastStatusMessage = value; if (statusInfo) statusInfo.textContent = value; }
         function applyTheme(value) {
             document.documentElement.dataset.theme = value;
             if (themeBtn) themeBtn.textContent = value === 'dark' ? '🌙 Dark' : value === 'light' ? '☀️ Light' : '🌗 Auto';
@@ -234,6 +280,25 @@
             let width = canvas.width, height = width / imageRatio;
             if (height > canvas.height) { height = canvas.height; width = height * imageRatio; }
             return { x: (canvas.width - width) / 2, y: (canvas.height - height) / 2, width: width, height: height, scale: width / sourceCanvas.width };
+        }
+        function computeOtsu(data) {
+            const histogram = new Array(256).fill(0), pixels = data.data;
+            for (let i = 0; i < pixels.length; i += 4) {
+                histogram[Math.max(0, Math.min(255, Math.round(0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2])))]++;
+            }
+            const total = pixels.length / 4;
+            let sum = 0, weight = 0;
+            for (let i = 0; i < 256; i++) sum += i * histogram[i];
+            let best = 0, bestVariance = -1, background = 0;
+            for (let i = 0; i < 256; i++) {
+                background += histogram[i]; if (!background) continue;
+                const foreground = total - background; if (!foreground) break;
+                weight += i * histogram[i];
+                const meanBackground = weight / background, meanForeground = (sum - weight) / foreground;
+                const variance = background * foreground * Math.pow(meanBackground - meanForeground, 2);
+                if (variance > bestVariance) { bestVariance = variance; best = i; }
+            }
+            return best;
         }
         function rebuildMask(options) {
             if (!sourceData) return;
@@ -262,14 +327,14 @@
         function retrace() {
             queued = false;
             if (!sourceData) return;
-            const options = { threshold: Number(threshold.value), invert: invert.checked, smoothing: Number(smooth.value) };
+            const options = { threshold: Number(threshold.value), invert: invert.checked, smoothing: Number(smooth.value), minAreaRatio: 0.0005, closeGaps: true };
             contours = window.ImageTracer.traceFromImageData(sourceData, options);
             rebuildMask(options); render();
             const count = contours.reduce(function (sum, loop) { return sum + loop.length; }, 0);
-            if (!contours.length) { normalized = null; useBtn.disabled = true; pointsInfo.textContent = '0'; setStatus('No contour'); showToast('No closed contour found', true); return; }
+            if (!contours.length) { normalized = null; useBtn.disabled = true; pointsInfo.textContent = '0'; setStatus('No contour'); return; }
             normalized = window.ImageTracer.normalize(contours[0]);
             pointsInfo.textContent = String(count);
-            if (normalized.length < 10) { normalized = null; useBtn.disabled = true; setStatus('Too few points'); showToast('Contour has too few points', true); }
+            if (normalized.length < 10) { normalized = null; useBtn.disabled = true; setStatus('Too few points'); }
             else { useBtn.disabled = false; setStatus('Ready'); }
         }
         function scheduleRetrace() { if (!queued) { queued = true; requestAnimationFrame(retrace); } }
@@ -296,7 +361,12 @@
             reader.readAsDataURL(file);
         }
         fileInput.addEventListener('change', function () { loadFile(fileInput.files && fileInput.files[0]); });
-        [threshold, smooth].forEach(function (input) { input.addEventListener('input', function () { if (input === threshold) thresholdVal.textContent = input.value; else smoothVal.textContent = input.value; scheduleRetrace(); }); });
+        [threshold, smooth].forEach(function (input) { input.addEventListener('input', function () { if (input === threshold) { thresholdVal.textContent = input.value; if (autoThreshold) autoThreshold.textContent = 'Auto threshold (Otsu)'; } else smoothVal.textContent = input.value; scheduleRetrace(); }); });
+        if (autoThreshold) autoThreshold.addEventListener('click', function () {
+            if (!sourceData) return;
+            threshold.value = String(computeOtsu(sourceData)); thresholdVal.textContent = threshold.value;
+            autoThreshold.textContent = 'Auto (Otsu)'; scheduleRetrace();
+        });
         invert.addEventListener('change', scheduleRetrace); mask.addEventListener('change', render);
         useBtn.addEventListener('click', function () {
             if (!normalized) return;
