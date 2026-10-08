@@ -64,4 +64,34 @@ const normalized = imageTracer.normalize(loops[0]);
 const extent = normalized.reduce((box, p) => ({ minX: Math.min(box.minX, p[0]), maxX: Math.max(box.maxX, p[0]), minY: Math.min(box.minY, p[1]), maxY: Math.max(box.maxY, p[1]) }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
 assert.ok(Math.abs((extent.maxX - extent.minX) - 300) < 1.1 && Math.abs((extent.maxY - extent.minY) - 300) < 1.1, 'normalized contour should fit a 300-unit box');
 
+function makeBinaryImage(w, h, draw) {
+    const data = new Uint8ClampedArray(w * h * 4);
+    data.fill(255);
+    for (let i = 3; i < data.length; i += 4) data[i] = 255;
+    draw(data, w, h);
+    return { width: w, height: h, data };
+}
+function paintDisk(data, w, h, cx, cy, radius, value = 0) {
+    for (let y = Math.max(0, cy - radius); y <= Math.min(h - 1, cy + radius); y++) {
+        for (let x = Math.max(0, cx - radius); x <= Math.min(w - 1, cx + radius); x++) {
+            if ((x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2) {
+                const i = (y * w + x) * 4; data[i] = data[i + 1] = data[i + 2] = value;
+            }
+        }
+    }
+}
+const blank = makeBinaryImage(32, 24, () => {});
+assert.equal(imageTracer.traceFromImageData(blank, { threshold: 128 }).length, 0, 'blank image should have no contour');
+const multi = makeBinaryImage(160, 100, (data, w) => {
+    paintDisk(data, w, 100, 58, 50, 22);
+    paintDisk(data, w, 100, 88, 50, 18);
+    paintDisk(data, w, 100, 140, 12, 3);
+});
+const merged = imageTracer.traceFromImageData(multi, { threshold: 128, smoothing: 0, closeGaps: true });
+assert.equal(merged.length, 1, 'complex input should return one primary connected path');
+assert.ok(merged[0].every(p => Number.isFinite(p.x) && Number.isFinite(p.y)), 'merged contour points must be finite');
+assert.ok(merged[0].length >= 10 && merged[0].length <= 2000, 'merged contour must stay within the handoff point budget');
+const cyclicGap = Math.hypot(merged[0][0].x - merged[0][merged[0].length - 1].x, merged[0][0].y - merged[0][merged[0].length - 1].y);
+assert.ok(Number.isFinite(cyclicGap), 'handoff contour must form a finite cyclic path');
+
 console.log('fit.test.mjs: all numerical and image-tracing assertions passed');

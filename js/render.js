@@ -39,11 +39,14 @@ let _lastAnimTs = null;
 
 function animate(ts) {
     if (typeof ts !== 'number') ts = performance.now();  // no-argument startFit calls use this branch
+    const timelineRange = document.getElementById('timelineRange');
+    if (timelineRange) timelineRange.value = S.time.toFixed(3);
     if (S.paused) { _lastAnimTs = ts; S.animationId = requestAnimationFrame(animate); return; }
     // Integrate rAF deltas at 0.12 cycles/sec; cap deltas at 0.1s to avoid background-tab jumps.
     const dtSec = _lastAnimTs === null ? 0 : Math.min((ts - _lastAnimTs) / 1000, 0.1);
     _lastAnimTs = ts;
     S.time = (S.time + 0.12 * S.speed * dtSec) % 1;
+    if (timelineRange) timelineRange.value = S.time.toFixed(3);
     rebuildTrail();  // rebuild the trail for the current harmonics and time
     draw(); S.animationId = requestAnimationFrame(animate);
 }
@@ -127,6 +130,8 @@ function stopAnimation() {
     _lastAnimTs = null;
     fourierCtx.clearRect(0, 0, cw(fourierCanvas), ch(fourierCanvas));
     S.paused = false; pauseBtn.textContent = '⏸️ Pause';
+    const timelineRange = document.getElementById('timelineRange');
+    if (timelineRange) timelineRange.value = S.time.toFixed(3);
 }
 
 function sizeFourierCanvas() {
