@@ -1,22 +1,55 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const candidates = [
+
+// Explicit paths first, then bare command names that must be probed before use.
+const pathCandidates = [
   process.env.EDGE_PATH,
   process.env.MSEDGE_PATH,
   join(process.env['PROGRAMFILES'] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
   join(process.env['PROGRAMFILES(X86)'] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
   join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-  'msedge',
-  'microsoft-edge',
+  '/usr/bin/microsoft-edge',
+  '/usr/bin/microsoft-edge-stable',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
 ].filter(Boolean);
-const edge = candidates.find(candidate => /[\\/]/.test(candidate) ? existsSync(candidate) : true);
 
-if (!edge) {
-  console.log('browser-smoke: SKIP (Microsoft Edge executable not found)');
+const commandCandidates = ['msedge', 'microsoft-edge', 'microsoft-edge-stable', 'google-chrome', 'chromium', 'chromium-browser'];
+
+function isRunnable(binary) {
+  const result = spawnSync(binary, ['--version'], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  if (result.error) return false;
+  return result.status === 0;
+}
+
+function resolveBrowser() {
+  for (const candidate of pathCandidates) {
+    if (existsSync(candidate) && isRunnable(candidate)) return candidate;
+  }
+  for (const command of commandCandidates) {
+    if (isRunnable(command)) return command;
+  }
+  return null;
+}
+
+const browser = resolveBrowser();
+
+// In CI the smoke check must actually run: a silent skip would hide real breakage.
+// Local development without a Chromium browser may skip explicitly.
+const requireBrowser = process.env.CI === 'true' || process.env.REQUIRE_BROWSER_SMOKE === '1';
+if (!browser) {
+  const message = 'browser-smoke: no Chromium-based browser found';
+  if (requireBrowser) {
+    console.error(`${message} (required in CI; set EDGE_PATH or install a browser)`);
+    process.exit(1);
+  }
+  console.log(`${message} — SKIP (local run)`);
   process.exit(0);
 }
 
@@ -27,9 +60,9 @@ const pages = [
   { file: 'trace/index.html', title: 'Fourier Image Tracer', required: ['#traceCanvas', '#fileInput', '#useBtn'], scripts: 1 },
 ];
 
-function htmlAttr(html, tag, attr) {
-  const match = html.match(new RegExp(`<${tag}[^>]*\\b${attr}=["']([^"']*)["']`, 'i'));
-  return match?.[1] ?? '';
+function pageTitle(html) {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? match[1].trim() : '';
 }
 function textContent(html) {
   return html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -39,7 +72,7 @@ function textContent(html) {
     .replace(/\s+/g, ' ').trim();
 }
 function assertPage(page, html, stderr) {
-  const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? '';
+  const title = pageTitle(html);
   if (title !== page.title) throw new Error(`${page.file}: expected title ${JSON.stringify(page.title)}, got ${JSON.stringify(title)}`);
   for (const selector of page.required) {
     const id = selector.slice(1);
@@ -57,13 +90,28 @@ function assertPage(page, html, stderr) {
 let failed = false;
 for (const page of pages) {
   const url = pathToFileURL(resolve(ROOT, page.file)).href;
-  const result = spawnSync(edge, [
-    '--headless', '--disable-gpu', '--no-sandbox', '--dump-dom',
-    '--virtual-time-budget=1500', '--enable-logging=stderr', '--log-level=1', url,
-  ], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  // A dedicated profile is required: an already-running browser can attach to the
+  // default profile and make --dump-dom print nothing at all. Writing the DOM to a
+  // file also avoids pipe-capture differences between platforms.
+  const workDir = mkdtempSync(join(tmpdir(), 'fourier-smoke-'));
+  const profile = join(workDir, 'profile');
+  const domFile = join(workDir, 'dom.html');
+  const result = spawnSync(browser, [
+    '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
+    `--user-data-dir=${profile}`,
+    '--dump-dom', '--virtual-time-budget=2500', '--enable-logging=stderr', '--log-level=1', url,
+  ], { encoding: 'utf8', timeout: 40000, windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
+  let html = '';
+  try {
+    if (existsSync(domFile)) html = readFileSync(domFile, 'utf8');
+  } catch (readError) { /* fall back to stdout below */ }
+  if (!html && result.stdout) html = result.stdout;
+  try { rmSync(workDir, { recursive: true, force: true }); } catch (cleanupError) { /* best effort */ }
+
   if (result.error?.code === 'ENOENT') {
-    console.log('browser-smoke: SKIP (Microsoft Edge executable not found)');
-    process.exit(0);
+    console.error(`browser-smoke: ${page.file}: browser disappeared after detection (${browser})`);
+    failed = true;
+    continue;
   }
   if (result.error) {
     console.error(`browser-smoke: ${page.file}: ${result.error.message}`);
@@ -71,12 +119,17 @@ for (const page of pages) {
     continue;
   }
   if (result.status !== 0) {
-    console.error(`browser-smoke: ${page.file}: Edge exited ${result.status}\n${result.stderr}`);
+    console.error(`browser-smoke: ${page.file}: browser exited ${result.status}\n${result.stderr}`);
+    failed = true;
+    continue;
+  }
+  if (!html || !html.trim()) {
+    console.error(`browser-smoke: ${page.file}: empty DOM output from ${browser}\n${result.stderr}`);
     failed = true;
     continue;
   }
   try {
-    assertPage(page, result.stdout, result.stderr);
+    assertPage(page, html, result.stderr);
     console.log(`browser-smoke: ${page.file} passed`);
   } catch (error) {
     console.error(`browser-smoke: ${error.message}`);
