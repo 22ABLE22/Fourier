@@ -48,6 +48,53 @@ assert.ok(counters.spectrum > 0 && counters.ui > 0 && counters.draw > 0, 'fit sh
 assert.equal(F.getTrail(0.25, 120).length, 120);
 assert.ok(Number.isFinite(F.computeError()), 'fit error should be finite');
 
+// --- Trail stability -------------------------------------------------------
+// The red trail must not deform between animation frames: its vertices are
+// anchored to fixed phase slots, so the drawn shape only rotates.
+function distToPolyline(px, py, poly) {
+    let best = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len2 = dx * dx + dy * dy;
+        let t = len2 > 0 ? ((px - a.x) * dx + (py - a.y) * dy) / len2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const d = Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy));
+        if (d < best) best = d;
+    }
+    return best;
+}
+function hausdorff(A, B) {
+    let worst = 0;
+    for (const p of A) worst = Math.max(worst, distToPolyline(p.x, p.y, B));
+    for (const p of B) worst = Math.max(worst, distToPolyline(p.x, p.y, A));
+    return worst;
+}
+
+// A lobed closed curve stands in for a traced image contour.
+const lobes = Array.from({ length: 2000 }, (_, i) => {
+    const t = 2 * Math.PI * i / 2000;
+    const r = 100 + 18 * Math.cos(9 * t) + 6 * Math.cos(18 * t + 0.7) + 3 * Math.sin(5 * t);
+    return { x: r * Math.cos(t), y: r * Math.sin(t) };
+});
+S.rawPoints = lobes; S.smoothness = 3; S.muted = [];
+const frameStep = 0.12 / 60;  // one frame at 60 fps, speed 1
+let previousSteps = 0;
+for (const harmonics of [30, 300, 1000, 3000]) {
+    S.harmonics = harmonics;
+    F.computeFit();
+    const steps = F.trailSteps();
+    assert.ok(steps >= previousSteps || harmonics < 1000, 'trail density must not shrink as harmonics grow');
+    previousSteps = steps;
+    const at = t => F.getTrail(t, steps).map(p => ({ x: p.x, y: p.y }));
+    const shimmer = hausdorff(at(0.31), at(0.31 + frameStep)) * S.viewScale;
+    assert.ok(shimmer < 0.05, `trail must not deform between frames (harmonics=${harmonics}, ${shimmer.toFixed(4)}px)`);
+    // The head vertex tracks the curve head exactly.
+    const head = F.getCurveHead(0.31);
+    const trail = at(0.31);
+    assert.ok(Math.hypot(trail[0].x - head.x, trail[0].y - head.y) < 1e-9, 'trail head must sit on the curve');
+}
+
 const imageContext = vm.createContext({ window: {}, console });
 vm.runInContext(js('image.js'), imageContext, { filename: 'image.js' });
 const imageTracer = imageContext.window.ImageTracer;
