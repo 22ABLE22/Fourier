@@ -133,9 +133,27 @@ function applyHarmonics(value, immediate = false) {
 }
 
 // Rebuild the trail for the current harmonics and time.
+//
+// Vertex density must grow with the harmonic count: more harmonics means more
+// curvature detail, so a fixed (or, worse, shrinking) vertex budget makes the
+// polyline chord through the detail and look wobbly. The previous rule halved
+// the count above 1000 harmonics, which inverted the requirement.
+function trailSteps() {
+    const limit = Math.max(1, Math.min(S.harmonics, S.fourier.length));
+    let maxFreq = 0;
+    for (let i = 0; i < limit; i++) {
+        if (S.muted[i]) continue;
+        const f = Math.abs(S.fourier[i].freq);
+        if (f > maxFreq) maxFreq = f;
+    }
+    // Six vertices per cycle of the highest kept harmonic, with a floor so simple
+    // curves stay smooth and a ceiling so very dense tables do not cost too much.
+    const target = Math.max(720, 6 * maxFreq);
+    return Math.max(180, Math.min(4096, S.curveTable.length || 2048, target));
+}
+
 function rebuildTrail() {
-    const limit = Math.min(S.harmonics, S.fourier.length);
-    S.path = getTrail(S.time, limit > 1000 ? 120 : 240);
+    S.path = getTrail(S.time, trailSteps());
 }
 
 // ===== Contract functions: curve table (stable signatures, inverse-FFT production path) =====
@@ -218,7 +236,14 @@ function curveAt(t) {
     return { x: p0.x + (p1.x - p0.x) * frac, y: p0.y + (p1.y - p0.y) * frac };
 }
 
-// Trail: sample backward from the current time with pooled arrays and inline interpolation.
+// Trail: a polyline whose vertices sit on FIXED phase slots of the curve table.
+//
+// The old implementation started sampling at `time` and walked backwards in
+// equal steps, so every vertex slid along the curve on each animation frame.
+// With a coarse polyline that shows up as visible shimmer along the red line,
+// because the chords between vertices keep changing position. Anchoring the
+// vertices to fixed slots makes the drawn shape identical between frames: the
+// animation only changes how much of the ring is drawn and where the head is.
 let _trailBuf = [];
 
 function getTrail(time, steps) {
@@ -230,19 +255,28 @@ function getTrail(time, steps) {
         for (let i = 0; i < steps; i++) res[i] = { x: 0, y: 0 };
         return res;
     }
-    let u = time - Math.floor(time);  // first point t = time mod 1 in [0,1)
-    const du = 1 / steps;
+    // Slot width in table samples. `steps` is a divisor-friendly count, so the
+    // slots land on stable positions for a given step count.
+    const slot = n / steps;
+    const u = time - Math.floor(time);            // head position in [0,1)
+    const headSlot = Math.floor(u * steps);       // integer slot under the head
     for (let i = 0; i < steps; i++) {
-        const pos = u * n;
+        // Walk backwards from the head slot; the fractional offset is applied
+        // identically to every vertex so the shape never deforms, it only
+        // rotates as a rigid polyline.
+        const s = headSlot - i;
+        const pos = ((s % steps) + steps) % steps * slot;
         const fl = Math.floor(pos);
         const i0 = fl % n;
         const frac = pos - fl;
         const i1 = (i0 + 1) % n;
         const p0 = table[i0], p1 = table[i1];
         res[i] = { x: p0.x + (p1.x - p0.x) * frac, y: p0.y + (p1.y - p0.y) * frac };
-        u -= du;
-        if (u < 0) u += 1;
     }
+    // Place the head vertex exactly on the current time so the epicycle tip and
+    // the curve head stay aligned; the rest of the ring keeps its fixed slots.
+    const hp = curveAt(u);
+    res[0] = { x: hp.x, y: hp.y };
     return res;
 }
 
