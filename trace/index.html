@@ -98,7 +98,10 @@
         .info-cell .label { font-size:0.6rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--cell-label); }
         .info-cell .value { margin-top:2px; font-size:0.98rem; font-weight:600; color:var(--blue); font-variant-numeric:tabular-nums; }
         .info-cell .value.small { font-size:0.72rem; font-weight:500; color:var(--muted); }
-        footer { flex:0 0 auto; text-align:center; font-size:0.69rem; color:var(--footer); }
+        footer { flex:0 0 auto; text-align:center; font-size:0.69rem; color:var(--footer); padding-top:7px; border-top:1px solid var(--line-soft); }
+        footer a { color:inherit; text-decoration:none; border-bottom:1px solid transparent; transition:color .15s,border-color .15s; }
+        footer a:hover { color:var(--brand); border-bottom-color:currentColor; }
+        footer a:focus-visible { outline:2px solid var(--brand); outline-offset:2px; border-radius:3px; }
         .toast { position:fixed; top:16px; left:50%; z-index:999; padding:9px 20px; font-size:0.82rem; color:#fff; background:#111827; border-radius:9px; box-shadow:0 8px 24px rgba(16,24,40,0.18); transform:translateX(-50%) translateY(-300%); transition:transform .35s cubic-bezier(.34,1.4,.64,1); pointer-events:none; }
         .toast.show { transform:translateX(-50%) translateY(0); }
         .toast.error { background:#dc2626; }
@@ -173,7 +176,7 @@
                 </div>
             </section>
         </div>
-        <footer>Fourier Series Visualization</footer>
+        <footer><a href="https://github.com/22ABLE22" target="_blank" rel="noopener noreferrer">GitHub @ 22ABLE22</a></footer>
     </div>
     <div id="toast" class="toast"></div>
     <script src="../js/image.js"></script>
