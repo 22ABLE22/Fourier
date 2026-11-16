@@ -55,6 +55,10 @@
         const maxPoints = Math.min(2000, Math.max(30, Number(options.maxPoints || 2000)));
         const minAreaRatio = Math.max(0, Number(options.minAreaRatio === undefined ? 0.0005 : options.minAreaRatio));
         const closeGaps = options.closeGaps !== false;
+        // Rings smaller than this fraction of the largest ring are specks, not ink.
+        const MERGE_AREA_RATIO = 0.004;
+        // Safety cap: a page of dense text can yield hundreds of rings; keep the cost linear.
+        const MAX_MERGED_LOOPS = 40;
         const W = width + 2, H = height + 2;
         const gray = new Uint8Array(W * H);
         gray.fill(255);
@@ -189,30 +193,44 @@
         loops.sort(function (a, b) { return b.area - a.area; });
         if (!loops.length) return [];
 
-        // Keep one connected path. Nearby substantial rings are appended with a short bridge;
-        // distant specks stay excluded so the main app never receives disjoint fragments.
+        // Keep one connected path. Every substantial ring is appended with a short bridge so the
+        // main app (which fits a single closed curve) receives all the strokes of the drawing.
+        // Rings are judged by area, not by their distance to the largest ring's centre: the
+        // separate glyphs of one signature sit far apart and used to be silently dropped.
         const main = loops[0];
-        function bounds(points) {
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            points.forEach(function (p) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); });
-            return { minX: minX, maxX: maxX, minY: minY, maxY: maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, size: Math.max(maxX - minX, maxY - minY) };
-        }
-        function nearestIndex(points, point) {
-            let best = 0, distance = Infinity;
-            points.forEach(function (p, i) { const dx = p.x - point.x, dy = p.y - point.y, d = dx * dx + dy * dy; if (d < distance) { distance = d; best = i; } });
-            return best;
-        }
-        let merged = main.points.slice(), mainBounds = bounds(merged);
-        loops.slice(1).forEach(function (entry) {
-            const candidateBounds = bounds(entry.points);
-            const dx = candidateBounds.cx - mainBounds.cx, dy = candidateBounds.cy - mainBounds.cy;
-            if (entry.area < main.area * 0.01 || Math.hypot(dx, dy) >= mainBounds.size * 0.75) return;
+        const admitFloor = Math.max(1, main.area * MERGE_AREA_RATIO);
+        const admitted = [main].concat(loops.slice(1).filter(function (entry) {
+            return entry.area >= admitFloor;
+        }).slice(0, MAX_MERGED_LOOPS));
+        let merged = admitted[0].points.slice();
+        admitted.slice(1).forEach(function (entry) {
+            // Coarse stride first, then refine inside the winning window. A full pairwise scan
+            // is O(n*m) and dominated the trace once every stroke was admitted.
+            const mainStride = Math.max(1, Math.ceil(merged.length / 96));
+            const candStride = Math.max(1, Math.ceil(entry.points.length / 96));
             let bestMain = 0, bestCandidate = 0, bestDistance = Infinity;
-            merged.forEach(function (a, ai) { entry.points.forEach(function (b, bi) { const ddx = a.x - b.x, ddy = a.y - b.y, d = ddx * ddx + ddy * ddy; if (d < bestDistance) { bestDistance = d; bestMain = ai; bestCandidate = bi; } }); });
+            for (let ai = 0; ai < merged.length; ai += mainStride) {
+                const a = merged[ai];
+                for (let bi = 0; bi < entry.points.length; bi += candStride) {
+                    const b = entry.points[bi];
+                    const ddx = a.x - b.x, ddy = a.y - b.y, d = ddx * ddx + ddy * ddy;
+                    if (d < bestDistance) { bestDistance = d; bestMain = ai; bestCandidate = bi; }
+                }
+            }
+            const mainFrom = Math.max(0, bestMain - mainStride), mainTo = Math.min(merged.length - 1, bestMain + mainStride);
+            const candFrom = Math.max(0, bestCandidate - candStride), candTo = Math.min(entry.points.length - 1, bestCandidate + candStride);
+            bestDistance = Infinity;
+            for (let ai = mainFrom; ai <= mainTo; ai++) {
+                const a = merged[ai];
+                for (let bi = candFrom; bi <= candTo; bi++) {
+                    const b = entry.points[bi];
+                    const ddx = a.x - b.x, ddy = a.y - b.y, d = ddx * ddx + ddy * ddy;
+                    if (d < bestDistance) { bestDistance = d; bestMain = ai; bestCandidate = bi; }
+                }
+            }
             const ordered = [];
             for (let i = 0; i < entry.points.length; i++) ordered.push(entry.points[(bestCandidate + i) % entry.points.length]);
             merged = merged.slice(0, bestMain + 1).concat(ordered, [merged[bestMain]], merged.slice(bestMain + 1));
-            mainBounds = bounds(merged);
         });
         if (merged.length > maxPoints) merged = decimate(merged, maxPoints);
         return [merged];

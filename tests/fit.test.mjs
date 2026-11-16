@@ -141,4 +141,17 @@ assert.ok(merged[0].length >= 10 && merged[0].length <= 2000, 'merged contour mu
 const cyclicGap = Math.hypot(merged[0][0].x - merged[0][merged[0].length - 1].x, merged[0][0].y - merged[0][merged[0].length - 1].y);
 assert.ok(Number.isFinite(cyclicGap), 'handoff contour must form a finite cyclic path');
 
+// Scattered glyphs: separate strokes of one signature sit far apart, so admission must not
+// depend on the distance to the largest stroke. Every substantial ring has to reach the path.
+const scattered = makeBinaryImage(300, 120, (data, w) => {
+    paintDisk(data, w, 120, 40, 60, 26);
+    paintDisk(data, w, 120, 150, 60, 24);
+    paintDisk(data, w, 120, 262, 60, 22);
+});
+const scatteredPath = imageTracer.traceFromImageData(scattered, { threshold: 128, smoothing: 0, closeGaps: true });
+assert.equal(scatteredPath.length, 1, 'scattered strokes should still return one path');
+const span = scatteredPath[0].reduce((box, p) => ({ minX: Math.min(box.minX, p.x), maxX: Math.max(box.maxX, p.x) }), { minX: Infinity, maxX: -Infinity });
+assert.ok(span.minX < 22 && span.maxX > 276, `all far-apart strokes must reach the traced path (got x ${span.minX.toFixed(1)}..${span.maxX.toFixed(1)})`);
+assert.ok(scatteredPath[0].length >= 10 && scatteredPath[0].length <= 2000, 'scattered contour must stay within the handoff point budget');
+
 console.log('fit.test.mjs: all numerical and image-tracing assertions passed');
