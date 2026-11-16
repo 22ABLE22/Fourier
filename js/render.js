@@ -85,7 +85,9 @@ function draw() {
         }
         fourierCtx.stroke();
     }
-    if (S.fourier.length > 0 && S.path.length > 0) {
+    // Draw the epicycle chain whenever harmonics exist; an empty trail must not
+    // hide the chain. getCurveHead() safely returns {0,0} when the table is empty.
+    if (S.fourier.length > 0) {
         const chainEnd = drawEpicycles(fourierCtx, cx, cy, S.time, S.harmonics, S.viewScale);
         const hp = worldToScreen(getCurveHead(S.time));
         // Draw a dashed residual connector when the chain end differs from the curve head.
@@ -107,21 +109,37 @@ function draw() {
 function drawEpicycles(ctx, ox, oy, t, n, s) {
     let px = 0, py = 0;
     const limit = Math.min(n, S.fourier.length, CFG.MAX_VISIBLE_EPICYCLES);
+    ctx.lineWidth = S.canvasDpr;
+    // Opacity is monotonic in i, so harmonics sharing a quantized-alpha bucket
+    // are contiguous. Batch each run into one path + stroke instead of issuing
+    // a separate stroke() per harmonic (up to ~160 stroke calls per frame).
+    const ALPHA_STEP = 0.016;  // <=0.008 color deviation, ~24 buckets from 0.55 to 0.16
+    let bucket = -1, open = false;
+    const flush = () => { if (open) { ctx.stroke(); open = false; } };
     for (let i = 0; i < limit; i++) {
         if (S.muted[i]) continue;  // Muted harmonics are excluded from the chain, circles, and radii.
         const { freq, amp, phase } = S.fourier[i];
         const angle = freq * 2*Math.PI * t + phase;
         const nx = px + amp * Math.cos(angle), ny = py + amp * Math.sin(angle);
         const alpha = Math.max(0.16, 0.55 - i * 0.006);
-        ctx.strokeStyle = `rgba(245,158,11,${alpha})`; ctx.lineWidth = S.canvasDpr;
+        const b = Math.round(alpha / ALPHA_STEP);
+        if (b !== bucket) {
+            flush();
+            bucket = b;
+            ctx.strokeStyle = `rgba(245,158,11,${(b * ALPHA_STEP).toFixed(3)})`;
+        }
+        const cx = ox + px*s, cy = oy + py*s;
         if (S.showCircles) {
-            ctx.beginPath(); ctx.arc(ox + px*s, oy + py*s, amp*s, 0, 2*Math.PI); ctx.stroke();
+            if (!open) { ctx.beginPath(); open = true; }
+            ctx.moveTo(cx + amp*s, cy); ctx.arc(cx, cy, amp*s, 0, 2*Math.PI);
         }
         if (S.showRadii) {
-            ctx.beginPath(); ctx.moveTo(ox + px*s, oy + py*s); ctx.lineTo(ox + nx*s, oy + ny*s); ctx.stroke();
+            if (!open) { ctx.beginPath(); open = true; }
+            ctx.moveTo(cx, cy); ctx.lineTo(ox + nx*s, oy + ny*s);
         }
         px = nx; py = ny;
     }
+    flush();
     return { x: ox + px*s, y: oy + py*s };
 }
 

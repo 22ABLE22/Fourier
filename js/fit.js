@@ -177,6 +177,10 @@ function rebuildCurve() {
     let T = 2048;
     const need = Math.max(2048, 2 * maxFreq);  // at least twice the largest used harmonic frequency
     while (T < need) T *= 2;                    // use the next power of two at least as large as need
+    // Invariant: need = 2*maxFreq, so after rounding T up to a power of two,
+    // T/2 >= maxFreq and every coefficient's |freq| <= T/2 (the Nyquist limit).
+    // With MAX_HARMONICS = MAX_SAFE_SAMPLES/2 this always holds; keep the cap
+    // below so folding bin = freq % T can never silently alias a harmonic.
     if (T > CFG.MAX_SAFE_SAMPLES) T = CFG.MAX_SAFE_SAMPLES;  // cap at 65536
     if (!_fftRe || _fftRe.length !== T) { _fftRe = new Float64Array(T); _fftIm = new Float64Array(T); }
     else { _fftRe.fill(0); _fftIm.fill(0); }
@@ -252,7 +256,10 @@ function getTrail(time, steps) {
     const table = S.curveTable;
     const n = table.length;
     if (n === 0) {  // empty table: preserve the old behavior with zero points
-        for (let i = 0; i < steps; i++) res[i] = { x: 0, y: 0 };
+        for (let i = 0; i < steps; i++) {
+            const o = res[i] || (res[i] = { x: 0, y: 0 });
+            o.x = 0; o.y = 0;
+        }
         return res;
     }
     // Slot width in table samples. `steps` is a divisor-friendly count, so the
@@ -264,6 +271,8 @@ function getTrail(time, steps) {
         // Walk backwards from the head slot; the fractional offset is applied
         // identically to every vertex so the shape never deforms, it only
         // rotates as a rigid polyline.
+        // Write into reused point objects instead of allocating one per vertex
+        // every frame: identical output, no per-frame GC churn.
         const s = headSlot - i;
         const pos = ((s % steps) + steps) % steps * slot;
         const fl = Math.floor(pos);
@@ -271,12 +280,14 @@ function getTrail(time, steps) {
         const frac = pos - fl;
         const i1 = (i0 + 1) % n;
         const p0 = table[i0], p1 = table[i1];
-        res[i] = { x: p0.x + (p1.x - p0.x) * frac, y: p0.y + (p1.y - p0.y) * frac };
+        const o = res[i] || (res[i] = { x: 0, y: 0 });
+        o.x = p0.x + (p1.x - p0.x) * frac;
+        o.y = p0.y + (p1.y - p0.y) * frac;
     }
     // Place the head vertex exactly on the current time so the epicycle tip and
     // the curve head stay aligned; the rest of the ring keeps its fixed slots.
     const hp = curveAt(u);
-    res[0] = { x: hp.x, y: hp.y };
+    res[0].x = hp.x; res[0].y = hp.y;
     return res;
 }
 
